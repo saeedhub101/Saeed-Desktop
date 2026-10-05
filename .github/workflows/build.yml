@@ -5,6 +5,10 @@ on:
     branches: [main]
   workflow_dispatch:
 
+concurrency:
+  group: saeed-desktop-build
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
