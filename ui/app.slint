@@ -1,4 +1,4 @@
-import { VerticalBox, HorizontalBox, Button, Text } from "std-widgets.slint";
+import { VerticalBox, HorizontalBox, Button, Text, LineEdit } from "std-widgets.slint";
 
 export component AppWindow inherits Window {
     title: "Saeed";
@@ -7,13 +7,18 @@ export component AppWindow inherits Window {
     min-width: 760px;
     min-height: 500px;
 
+    property <string> status: "Ready";
+    property <string> conversation: "Saeed is ready. Chat and voice will share one session.";
+
+    callback send-message(string);
+
     VerticalBox {
         padding: 28px;
         spacing: 18px;
 
         Text {
             text: "Saeed";
-            font-size: 32px;
+            font-size: 34px;
             horizontal-alignment: center;
         }
 
@@ -24,23 +29,46 @@ export component AppWindow inherits Window {
         }
 
         Rectangle {
+            border-width: 1px;
+            border-radius: 12px;
             vertical-stretch: 1;
-        }
 
-        HorizontalBox {
-            alignment: center;
-            spacing: 12px;
+            VerticalBox {
+                padding: 20px;
+                spacing: 12px;
 
-            Button {
-                text: "Chat";
-            }
+                Text {
+                    text: conversation;
+                    wrap: word-wrap;
+                }
 
-            Button {
-                text: "Voice";
-            }
+                Rectangle {
+                    vertical-stretch: 1;
+                }
 
-            Button {
-                text: "Settings";
+                Text {
+                    text: status;
+                    font-size: 13px;
+                }
+
+                HorizontalBox {
+                    spacing: 10px;
+
+                    LineEdit {
+                        placeholder-text: "Talk to Saeed...";
+                        edited => { root.send-message(self.text); }
+                    }
+
+                    Button {
+                        text: "Voice";
+                        clicked => { root.status = "Voice ready"; }
+                    }
+
+                    Button {
+                        text: "Settings";
+                        clicked => { root.status = "Settings ready"; }
+                    }
+                }
             }
         }
     }
