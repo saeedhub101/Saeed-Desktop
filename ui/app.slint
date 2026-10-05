@@ -1,0 +1,47 @@
+import { VerticalBox, HorizontalBox, Button, Text } from "std-widgets.slint";
+
+export component AppWindow inherits Window {
+    title: "Saeed";
+    preferred-width: 900px;
+    preferred-height: 620px;
+    min-width: 760px;
+    min-height: 500px;
+
+    VerticalBox {
+        padding: 28px;
+        spacing: 18px;
+
+        Text {
+            text: "Saeed";
+            font-size: 32px;
+            horizontal-alignment: center;
+        }
+
+        Text {
+            text: "AI desktop companion";
+            font-size: 16px;
+            horizontal-alignment: center;
+        }
+
+        Rectangle {
+            vertical-stretch: 1;
+        }
+
+        HorizontalBox {
+            alignment: center;
+            spacing: 12px;
+
+            Button {
+                text: "Chat";
+            }
+
+            Button {
+                text: "Voice";
+            }
+
+            Button {
+                text: "Settings";
+            }
+        }
+    }
+}
