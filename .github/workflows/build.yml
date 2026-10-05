@@ -33,5 +33,21 @@ jobs:
       - name: Check
         run: cargo check
 
+      - name: Test
+        run: cargo test
+
       - name: Build release
         run: cargo build --release
+
+      - name: Package prototype
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          Copy-Item target/release/saeed-desktop.exe dist/Saeed.exe
+          Compress-Archive -Path dist/Saeed.exe -DestinationPath Saeed-Desktop-Prototype.zip
+
+      - name: Upload prototype
+        uses: actions/upload-artifact@v4
+        with:
+          name: Saeed-Desktop-Prototype
+          path: Saeed-Desktop-Prototype.zip
