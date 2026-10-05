@@ -1,6 +1,7 @@
-//! Single application controller. UI, voice, character and tools will call
-//! this boundary instead of owning competing application state.
+//! Single application controller. UI, voice, character and tools call this
+//! boundary instead of owning competing application state.
 
+use crate::ai::{AiProvider, AiRequest, AiResponse};
 use crate::session::{Message, Session};
 
 pub struct SaeedCore {
@@ -22,5 +23,11 @@ impl SaeedCore {
 
     pub fn messages(&self) -> &[Message] {
         self.session.messages()
+    }
+
+    pub fn complete<P: AiProvider>(&self, provider: &P) -> Result<AiResponse, String> {
+        provider.complete(&AiRequest {
+            messages: self.session.messages().to_vec(),
+        })
     }
 }
