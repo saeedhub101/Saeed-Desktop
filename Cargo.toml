@@ -1,0 +1,19 @@
+[package]
+name = "saeed-desktop"
+version = "0.1.0"
+edition = "2024"
+description = "Saeed AI desktop companion"
+
+[dependencies]
+slint = "1.17"
+rusqlite = { version = "0.37", features = ["bundled"] }
+
+[build-dependencies]
+slint-build = "1.17"
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+panic = "abort"
+strip = true
