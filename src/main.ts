@@ -118,12 +118,16 @@ async function init(): Promise<void> {
   canvas.addEventListener(
     "pointerdown",
     (event) => {
+      const rect = canvas.getBoundingClientRect();
+      const x = event.clientX - rect.left;
+      const y = event.clientY - rect.top;
+
       if (
         scene?.hitTest(
-          event.clientX,
-          event.clientY,
-          canvas.clientWidth,
-          canvas.clientHeight,
+          x,
+          y,
+          rect.width,
+          rect.height,
         )
       ) {
         void windowHandle.startDragging();
