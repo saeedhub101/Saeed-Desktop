@@ -21,7 +21,7 @@ use crate::{
     logging::Logger,
     settings::{AppSettings, CharacterScale},
     tray,
-    windows_mgr::HideState,
+    windows_mgr::{self, HideState},
 };
 
 pub struct AppState {
