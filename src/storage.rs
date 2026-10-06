@@ -41,6 +41,12 @@ impl Storage {
              CREATE TABLE IF NOT EXISTS app_meta (
                  key TEXT PRIMARY KEY,
                  value TEXT NOT NULL
+             );
+             CREATE TABLE IF NOT EXISTS conversation_messages (
+                 id INTEGER PRIMARY KEY AUTOINCREMENT,
+                 role TEXT NOT NULL,
+                 content TEXT NOT NULL,
+                 source TEXT NOT NULL
              );",
         )?;
         Ok(Self { connection })
@@ -104,6 +110,42 @@ impl Storage {
             })?;
         }
 
+        Ok(())
+    }
+
+    pub fn load_messages(&self) -> Result<Vec<crate::session::Message>> {
+        let mut statement = self.connection.prepare(
+            "SELECT role, content, source FROM conversation_messages ORDER BY id ASC"
+        )?;
+        let rows = statement.query_map([], |row| {
+            let role: String = row.get(0)?;
+            let content: String = row.get(1)?;
+            let source: String = row.get(2)?;
+            let source = match source.as_str() {
+                "chat" => crate::session::MessageSource::Chat,
+                "voice" => crate::session::MessageSource::Voice,
+                _ => crate::session::MessageSource::System,
+            };
+            Ok(crate::session::Message { role, content, source })
+        })?;
+        rows.collect()
+    }
+
+    pub fn append_message(&self, message: &crate::session::Message) -> Result<()> {
+        let source = match message.source {
+            crate::session::MessageSource::Chat => "chat",
+            crate::session::MessageSource::Voice => "voice",
+            crate::session::MessageSource::System => "system",
+        };
+        self.connection.execute(
+            "INSERT INTO conversation_messages(role, content, source) VALUES(?1, ?2, ?3)",
+            (&message.role, &message.content, source),
+        )?;
+        Ok(())
+    }
+
+    pub fn clear_conversation(&self) -> Result<()> {
+        self.connection.execute("DELETE FROM conversation_messages", [])?;
         Ok(())
     }
 
