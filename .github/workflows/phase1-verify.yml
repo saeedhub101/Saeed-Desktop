@@ -225,7 +225,9 @@ jobs:
             }
             $logCandidates = @(
               "$env:APPDATA\Saeed\logs\saeed.log",
-              "$env:LOCALAPPDATA\Saeed\logs\saeed.log"
+              "$env:APPDATA\Saeed\logs\panic.log",
+              "$env:LOCALAPPDATA\Saeed\logs\saeed.log",
+              "$env:LOCALAPPDATA\Saeed\logs\panic.log"
             )
             foreach ($log in $logCandidates) {
               if (Test-Path $log) {
