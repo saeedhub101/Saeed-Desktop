@@ -2,14 +2,9 @@ use std::thread;
 
 use rfd::FileDialog;
 use tauri::{
-    menu::{
-        CheckMenuItemBuilder, MenuBuilder, MenuItemBuilder, SubmenuBuilder,
-    },
-    PhysicalSize,
-    tray::{
-        MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent,
-    },
-    AppHandle, Emitter, Manager,
+    menu::{CheckMenuItemBuilder, MenuBuilder, MenuItemBuilder, SubmenuBuilder},
+    tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
+    AppHandle, Emitter, Manager, PhysicalSize,
 };
 
 use crate::{app::AppState, settings::CharacterScale, windows_mgr};
@@ -64,21 +59,16 @@ fn menu(app: &AppHandle) -> tauri::Result<tauri::menu::Menu<tauri::Wry>> {
         .item(&large)
         .build()?;
 
-    let always_on_top_item =
-        CheckMenuItemBuilder::with_id("top", "Always on Top")
-            .checked(always_on_top)
-            .build(app)?;
+    let always_on_top_item = CheckMenuItemBuilder::with_id("top", "Always on Top")
+        .checked(always_on_top)
+        .build(app)?;
 
-    let low_power_item =
-        CheckMenuItemBuilder::with_id("low", "Low Power Mode")
-            .checked(low_power)
-            .build(app)?;
+    let low_power_item = CheckMenuItemBuilder::with_id("low", "Low Power Mode")
+        .checked(low_power)
+        .build(app)?;
 
-    let rotate =
-        MenuItemBuilder::with_id("rotate", "Rotate once").build(app)?;
-    let debug = SubmenuBuilder::new(app, "Debug")
-        .item(&rotate)
-        .build()?;
+    let rotate = MenuItemBuilder::with_id("rotate", "Rotate once").build(app)?;
+    let debug = SubmenuBuilder::new(app, "Debug").item(&rotate).build()?;
 
     let quit = MenuItemBuilder::with_id("quit", "Quit").build(app)?;
 
@@ -120,19 +110,14 @@ pub fn install(app: &AppHandle) -> tauri::Result<()> {
                 let state = app.state::<AppState>();
 
                 if let Ok(mut settings) = state.settings.lock() {
-                    settings.character.always_on_top =
-                        !settings.character.always_on_top;
+                    settings.character.always_on_top = !settings.character.always_on_top;
 
                     if let Ok(dir) = crate::app::data_dir(app) {
                         let _ = settings.save(&dir);
                     }
 
-                    if let Some(window) =
-                        app.get_webview_window("character")
-                    {
-                        let _ = window.set_always_on_top(
-                            settings.character.always_on_top,
-                        );
+                    if let Some(window) = app.get_webview_window("character") {
+                        let _ = window.set_always_on_top(settings.character.always_on_top);
                     }
                 }
 
@@ -145,18 +130,13 @@ pub fn install(app: &AppHandle) -> tauri::Result<()> {
                     let enabled = !settings.performance.low_power;
                     drop(settings);
 
-                    let _ = crate::app::set_low_power(
-                        app.clone(),
-                        enabled,
-                        app.state(),
-                    );
+                    let _ = crate::app::set_low_power(app.clone(), enabled, app.state());
                 }
 
                 refresh(app);
             }
             "rotate" => {
-                let _ =
-                    crate::app::tray_debug_rotate_once(app.clone());
+                let _ = crate::app::tray_debug_rotate_once(app.clone());
             }
             "quit" => {
                 app.exit(0);
@@ -172,10 +152,7 @@ pub fn install(app: &AppHandle) -> tauri::Result<()> {
             {
                 let app = tray.app_handle();
 
-                if app
-                    .get_webview_window("character")
-                    .is_some()
-                {
+                if app.get_webview_window("character").is_some() {
                     let _ = crate::app::tray_hide_character(app.clone());
                 } else {
                     let _ = windows_mgr::show_character(app);
@@ -207,15 +184,9 @@ fn choose(app: AppHandle) {
 }
 
 fn scale(app: &AppHandle, scale: CharacterScale) {
-    let _ = crate::app::tray_set_character_scale(
-        app.clone(),
-        scale,
-        app.state(),
-    );
+    let _ = crate::app::tray_set_character_scale(app.clone(), scale, app.state());
 
-    if let Some(window) =
-        app.get_webview_window("character")
-    {
+    if let Some(window) = app.get_webview_window("character") {
         let size = match scale {
             CharacterScale::Small => 280,
             CharacterScale::Medium => 360,
