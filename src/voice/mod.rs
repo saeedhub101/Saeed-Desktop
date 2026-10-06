@@ -379,6 +379,54 @@ impl TextToSpeech for LocalCommandTextToSpeech {
         Ok(audio)
     }
 }
+pub struct OpenAiCompatibleSpeechToText {
+    api_key: String,
+    model: String,
+    endpoint: String,
+}
+impl OpenAiCompatibleSpeechToText {
+    pub fn new(api_key: impl Into<String>, model: impl Into<String>, endpoint: impl Into<String>) -> Self {
+        Self { api_key: api_key.into(), model: model.into(), endpoint: endpoint.into() }
+    }
+}
+impl SpeechToText for OpenAiCompatibleSpeechToText {
+    fn transcribe(&self, audio: &[u8]) -> Result<String, String> {
+        if audio.is_empty() { return Err("Voice input is empty.".into()); }
+        let part = Part::bytes(audio).file_name("speech.wav").mime_str("audio/wav")
+            .map_err(|e| format!("Could not prepare audio: {e}"))?;
+        let form = Form::new().part("file", part).text("model", &self.model);
+        let mut response = ureq::post(&self.endpoint)
+            .header("Authorization", &format!("Bearer {}", self.api_key))
+            .send(form).map_err(|e| format!("Speech-to-text request failed: {e}"))?;
+        let payload: TranscriptionResponse = response.body_mut().read_json()
+            .map_err(|e| format!("Speech-to-text response could not be read: {e}"))?;
+        let text=payload.text.trim().to_string();
+        if text.is_empty(){return Err("Speech-to-text returned no text.".into());}
+        Ok(text)
+    }
+}
+
+pub struct ElevenLabsTextToSpeech { api_key: String, voice_id: String, model: String }
+impl ElevenLabsTextToSpeech {
+    pub fn new(api_key: impl Into<String>, voice_id: impl Into<String>, model: impl Into<String>) -> Self {
+        Self { api_key: api_key.into(), voice_id: voice_id.into(), model: model.into() }
+    }
+}
+impl TextToSpeech for ElevenLabsTextToSpeech {
+    fn synthesize(&self, text: &str) -> Result<Vec<u8>, String> {
+        let text=text.trim();
+        if text.is_empty(){return Err("TTS text is empty.".into());}
+        let body=serde_json::json!({"text":text,"model_id":self.model,"output_format":"wav_44100"});
+        let url=format!("https://api.elevenlabs.io/v1/text-to-speech/{}",self.voice_id);
+        let mut response=ureq::post(&url)
+            .header("xi-api-key",&self.api_key)
+            .header("Content-Type","application/json")
+            .header("Accept","audio/wav")
+            .send_json(&body).map_err(|e| format!("ElevenLabs TTS request failed: {e}"))?;
+        response.body_mut().read_to_vec().map_err(|e| format!("ElevenLabs audio could not be read: {e}"))
+    }
+}
+
 pub struct OpenAiSpeechToText {
     api_key: String,
     model: String,
