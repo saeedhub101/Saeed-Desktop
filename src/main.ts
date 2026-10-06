@@ -45,7 +45,7 @@ function disposeObject(root: THREE.Object3D) {
 function disposeMaterial(material: THREE.Material) {
   material.dispose();
   for (const key of ["map", "normalMap", "roughnessMap", "metalnessMap", "emissiveMap", "aoMap", "alphaMap", "bumpMap"] as const) {
-    const value = material[key];
+    const value = (material as unknown as Record<string, unknown>)[key];
     if (value && typeof value === "object" && "dispose" in value) (value as THREE.Texture).dispose();
   }
 }
