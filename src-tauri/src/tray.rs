@@ -2,7 +2,6 @@ use std::thread;
 
 use rfd::FileDialog;
 use tauri::{
-    image::Image,
     menu::{
         CheckMenuItemBuilder, MenuBuilder, MenuItemBuilder, SubmenuBuilder,
     },
