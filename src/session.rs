@@ -44,6 +44,10 @@ impl Session {
     pub fn messages(&self) -> &[Message] {
         &self.messages
     }
+
+    pub fn restore(messages: Vec<Message>) -> Self {
+        Self { messages }
+    }
 }
 
 #[cfg(test)]
