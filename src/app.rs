@@ -715,13 +715,27 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     let tray = SaeedTray::new()?;
     {
         let weak = window.as_weak();
-        tray.on_show_saeed(move || { if let Some(window) = weak.upgrade() { let _ = window.show(); } });
+        let character_weak = character_window.as_weak();
+        tray.on_show_saeed(move || {
+            if let Some(window) = weak.upgrade() { let _ = window.show(); }
+            if let Some(window) = character_weak.upgrade() { let _ = window.show(); }
+        });
     }
     {
         let weak = window.as_weak();
-        tray.on_hide_saeed(move || { if let Some(window) = weak.upgrade() { let _ = window.hide(); } });
+        let character_weak = character_window.as_weak();
+        tray.on_hide_saeed(move || {
+            if let Some(window) = weak.upgrade() { let _ = window.hide(); }
+            if let Some(window) = character_weak.upgrade() { let _ = window.hide(); }
+        });
     }
-    tray.on_exit_saeed(move || { let _ = slint::quit_event_loop(); });
+    {
+        let character_weak = character_window.as_weak();
+        tray.on_exit_saeed(move || {
+            if let Some(window) = character_weak.upgrade() { let _ = window.hide(); }
+            let _ = slint::quit_event_loop();
+        });
+    }
     window.show()?;
     tray.show()?;
     slint::run_event_loop()?;
