@@ -389,6 +389,16 @@ Assert ($null -ne $modelPath) "character-storage" "new GLB copied under %APPDATA
 $h=Wait-Until { $x=Get-WindowHandle;if($x -ne [IntPtr]::Zero){$x}else{$null}} 5000
 Assert $h "glb-runtime" "installed EXE remained alive after loading a real GLB"
 
+# Change Character must survive a full process restart.
+$changedId=$settings.character.currentId
+Get-SaeedProcess | Stop-Process -Force
+Wait-Until { if((Get-SaeedProcess).Count -eq 0){$true}else{$null}} 10000 | Out-Null
+$proc=Start-Process $exe -PassThru
+$h=Wait-Until { $x=Get-WindowHandle;if($x -ne [IntPtr]::Zero){$x}else{$null}} 15000
+Assert $h "change-character-restart" "application restarted after Change Character"
+$settings=Get-Content $settingsPath -Raw|ConvertFrom-Json
+Assert ($settings.character.currentId -eq $changedId) "change-character-persistence" "selected GLB id persisted after restart"
+
 # Rotate once must run without leaving a permanent render loop; invoke and then inspect CPU.
 Open-TrayMenu; Invoke-Menu "Debug"; Start-Sleep -Milliseconds 150; Invoke-Menu "Rotate once"
 Start-Sleep -Seconds 3
