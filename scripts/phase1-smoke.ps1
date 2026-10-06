@@ -21,6 +21,80 @@ public static class Win32Input {
 "@
 
 $results = [ordered]@{}
+
+function Wait-Until([scriptblock]$Condition,[int]$TimeoutMs=15000) {
+  $end=(Get-Date).AddMilliseconds($TimeoutMs)
+  do {
+    try {
+      $value=&$Condition
+      if($value){ return $value }
+    } catch {}
+    Start-Sleep -Milliseconds 200
+  } while((Get-Date)-lt $end)
+  return $null
+}
+
+function Get-SaeedProcess {
+  @(Get-Process -Name "Saeed" -ErrorAction SilentlyContinue | Where-Object {
+    $_.Path -and $_.Path -eq $exe
+  })
+}
+
+function Get-DescendantPids([int]$RootPid) {
+  $all=@{}
+  try {
+    Get-CimInstance Win32_Process -ErrorAction Stop | ForEach-Object {
+      $all[[int]$_.ProcessId]=[int]$_.ParentProcessId
+    }
+  } catch {
+    return @()
+  }
+
+  $result=New-Object System.Collections.Generic.List[int]
+  $queue=New-Object System.Collections.Generic.Queue[int]
+  $queue.Enqueue($RootPid)
+  while($queue.Count -gt 0){
+    $parent=$queue.Dequeue()
+    foreach($entry in $all.GetEnumerator()){
+      if($entry.Value -eq $parent -and $entry.Key -ne $RootPid){
+        if(!$result.Contains($entry.Key)){
+          $result.Add($entry.Key)
+          $queue.Enqueue($entry.Key)
+        }
+      }
+    }
+  }
+  return @($result)
+}
+
+function Get-TreeMemoryMB([int]$RootPid) {
+  $pids=@($RootPid)+@(Get-DescendantPids $RootPid)
+  $bytes=0
+  foreach($pid in $pids){
+    try { $bytes += [int64](Get-Process -Id $pid -ErrorAction Stop).WorkingSet64 } catch {}
+  }
+  return [math]::Round($bytes / 1MB, 1)
+}
+
+function Get-WindowHandle {
+  $h=[Win32Input]::FindWindow($null,"Saeed")
+  if($h -ne [IntPtr]::Zero){ return $h }
+  $p=Get-SaeedProcess | Select-Object -First 1
+  if($p){
+    $p.Refresh()
+    return $p.MainWindowHandle
+  }
+  return [IntPtr]::Zero
+}
+
+function Get-Rect([IntPtr]$Handle) {
+  $rect=New-Object Win32Input+RECT
+  if(![Win32Input]::GetWindowRect($Handle,[ref]$rect)){
+    throw "GetWindowRect failed"
+  }
+  return $rect
+}
+
 $script:CurrentTest = "setup"
 # The smoke suite is deliberately non-fail-fast. Runtime/UIA exceptions are recorded as FAIL and execution continues.
 function Record-Exception([string]$name,[System.Exception]$error) { Fail $name $error.Exception.Message }
