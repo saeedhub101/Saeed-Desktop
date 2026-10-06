@@ -5,6 +5,12 @@ pub enum MessageSource {
     System,
 }
 
+impl Default for MessageSource {
+    fn default() -> Self {
+        Self::System
+    }
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct Message {
     pub role: String,
