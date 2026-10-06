@@ -217,9 +217,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let worker_running = Arc::clone(&voice_worker_running);
         let core = Arc::clone(&core);
         let settings = Arc::clone(&settings);
-        let weak = weak.clone();
+        let weak_for_handler = weak.clone();
 
         window.on_toggle_voice(move || {
+            let Some(window) = weak_for_handler.upgrade() else {
+                return;
+            };
+
             if active.load(Ordering::Acquire) {
                 active.store(false, Ordering::Release);
                 window.set_voice_button_text("Mic ON".into());
@@ -239,7 +243,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let worker_running = Arc::clone(&worker_running);
             let core = Arc::clone(&core);
             let settings = Arc::clone(&settings);
-            let weak = weak.clone();
+            let weak = weak_for_handler.clone();
 
             thread::spawn(move || {
                 let mut recorder = MicrophoneRecorder::new();
@@ -278,8 +282,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         Ok((transcript, response)) => {
                             let transcript_for_ui = transcript.clone();
                             let response_for_ui = response.clone();
+                            let weak_for_ui = weak.clone();
                             let _ = slint::invoke_from_event_loop(move || {
-                                if let Some(window) = weak.upgrade() {
+                                if let Some(window) = weak_for_ui.upgrade() {
                                     window.set_conversation(
                                         format!(
                                             "You (Voice): {transcript_for_ui}\n\nSaeed: {response_for_ui}"
