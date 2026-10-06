@@ -18,11 +18,14 @@ export component AppWindow inherits Window {
     in-out property <string> settings_tts_voice: "alloy";
     in-out property <string> settings_api_key_status: "Stored securely in Windows Credential Manager";
     in-out property <string> settings_status: "";
+    in-out property <image> character_image;
+    in-out property <string> character_button_text: "Hide Saeed";
 
     callback send-message(string);
     callback toggle-voice();
     callback save-settings(string, string, string, string, string);
     callback clear-api-key();
+    callback toggle-character();
 
     if !settings_open: VerticalBox {
         padding: 28px;
@@ -36,6 +39,11 @@ export component AppWindow inherits Window {
             }
 
             Button {
+                text: character_button_text;
+                clicked => { root.toggle-character(); }
+            }
+
+            Button {
                 text: "Settings";
                 clicked => { root.settings_open = true; }
             }
@@ -45,6 +53,14 @@ export component AppWindow inherits Window {
             text: "AI desktop companion";
             font-size: 16px;
             horizontal-alignment: center;
+        }
+
+        Image {
+            source: character_image;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+            width: 260px;
+            height: 260px;
         }
 
         Rectangle {
