@@ -32,9 +32,31 @@ jobs:
         shell: pwsh
         run: npm install
 
+      - name: Generate icons
+        shell: pwsh
+        run: npm run icons
+
+      - name: Verify generated icon set
+        shell: pwsh
+        run: |
+          $required = @(
+            "src-tauri/icons/32x32.png",
+            "src-tauri/icons/128x128.png",
+            "src-tauri/icons/128x128@2x.png",
+            "src-tauri/icons/icon.png",
+            "src-tauri/icons/icon.ico"
+          )
+          foreach ($path in $required) {
+            if (!(Test-Path $path)) { throw "Missing generated icon: $path" }
+          }
+
       - name: TypeScript check
         shell: pwsh
         run: npm run check
+
+      - name: Rust format check
+        shell: pwsh
+        run: cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
 
       - name: Cargo check
         shell: pwsh
@@ -65,15 +87,24 @@ jobs:
           $installer = (Get-Content "$env:RUNNER_TEMP\installer.txt" -Raw).Trim()
           powershell -NoProfile -ExecutionPolicy Bypass -File scripts/phase1-smoke.ps1 -Installer $installer
 
+      - name: Collect Phase 1 evidence
+        if: always()
+        shell: pwsh
+        run: |
+          $evidence = Join-Path $env:RUNNER_TEMP "phase1-evidence"
+          New-Item -ItemType Directory -Force -Path $evidence | Out-Null
+          $results = Join-Path $env:RUNNER_TEMP "phase1-results.json"
+          if (Test-Path $results) { Copy-Item $results $evidence -Force }
+          if (Test-Path "$env:RUNNER_TEMP\installer.txt") { Copy-Item "$env:RUNNER_TEMP\installer.txt" $evidence -Force }
+          $logs = "$env:APPDATA\Saeed\logs"
+          if (Test-Path $logs) { Copy-Item "$logs\*.log" $evidence -Force -ErrorAction SilentlyContinue }
+
       - name: Publish Phase 1 evidence
         if: always()
         uses: actions/upload-artifact@v6
         with:
           name: phase1-evidence
-          path: |
-            ${{ runner.temp }}/phase1-results.json
-            ${{ runner.temp }}/installer.txt
-            ${{ env.APPDATA }}/Saeed/logs/*.log
+          path: ${{ runner.temp }}/phase1-evidence/**
           if-no-files-found: warn
 
       - name: Publish installer
