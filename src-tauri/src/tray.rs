@@ -100,7 +100,7 @@ pub fn install(app: &AppHandle) -> tauri::Result<()> {
             }
             "hide" => {
                 // The tray menu is refreshed once the window is really gone.
-                let _ = crate::app::tray_hide_character(app.clone());
+                windows_mgr::hide_character(app);
             }
             "change" => choose(app.clone()),
             "small" => scale(app, CharacterScale::Small),
@@ -136,7 +136,7 @@ pub fn install(app: &AppHandle) -> tauri::Result<()> {
                 refresh(app);
             }
             "rotate" => {
-                let _ = crate::app::tray_debug_rotate_once(app.clone());
+                let _ = crate::app::debug_rotate_once(app.clone());
             }
             "quit" => {
                 app.exit(0);
@@ -171,7 +171,7 @@ fn choose(app: AppHandle) {
             .add_filter("GLB model", &["glb"])
             .pick_file()
         {
-            let _ = crate::app::tray_import_character(
+            let _ = crate::app::import_character(
                 app.clone(),
                 path.to_string_lossy().to_string(),
                 app.state(),
@@ -184,7 +184,7 @@ fn choose(app: AppHandle) {
 }
 
 fn scale(app: &AppHandle, scale: CharacterScale) {
-    let _ = crate::app::tray_set_character_scale(app.clone(), scale, app.state());
+    let _ = crate::app::set_character_scale(app.clone(), scale, app.state());
 
     if let Some(window) = app.get_webview_window("character") {
         let size = match scale {
