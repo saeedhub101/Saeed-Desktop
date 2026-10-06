@@ -85,6 +85,9 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     let storage = Storage::open_default()?;
     let settings = storage.load_settings()?;
     let settings = Arc::new(Mutex::new(settings));
+    window.set_settings_ai_provider(settings.lock().unwrap().ai_provider.clone().into());
+    window.set_settings_stt_provider(settings.lock().unwrap().stt_provider.clone().into());
+    window.set_settings_tts_provider(settings.lock().unwrap().tts_provider.clone().into());
     window.set_settings_ai_model(settings.lock().unwrap().ai_model.clone().into());
     window.set_settings_stt_model(settings.lock().unwrap().stt_model.clone().into());
     window.set_settings_tts_model(settings.lock().unwrap().tts_model.clone().into());
@@ -93,7 +96,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
         window.set_motion_button_text("Resume Motion".into());
     }
     if settings.lock().unwrap().openai_api_key.is_some() {
-        window.set_settings_api_key_status("API key saved in Windows Credential Manager".into());
+        window.set_settings_api_key_status("OpenAI key saved in Windows Credential Manager".into());
     }
     let persisted_messages = storage.load_messages().unwrap_or_default();
     let core = Arc::new(Mutex::new(SaeedCore::from_messages(persisted_messages.clone())));
@@ -282,7 +285,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     {
         let settings = Arc::clone(&settings);
         let weak = window.as_weak();
-        window.on_save_settings(move |api_key, ai_model, stt_model, tts_model, tts_voice| {
+        window.on_save_settings(move |api_key, groq_key, elevenlabs_key, ai_provider, stt_provider, tts_provider, ai_model, stt_model, tts_model, tts_voice| {
             let mut next = {
                 let Ok(current) = settings.lock() else {
                     if let Some(window) = weak.upgrade() {
@@ -294,9 +297,14 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             };
 
             let key = api_key.trim();
-            if !key.is_empty() {
-                next.openai_api_key = Some(key.to_string());
-            }
+            if !key.is_empty() { next.openai_api_key = Some(key.to_string()); }
+            let groq = groq_key.trim();
+            if !groq.is_empty() { next.groq_api_key = Some(groq.to_string()); }
+            let eleven = elevenlabs_key.trim();
+            if !eleven.is_empty() { next.elevenlabs_api_key = Some(eleven.to_string()); }
+            next.ai_provider = ai_provider.trim().to_ascii_lowercase();
+            next.stt_provider = stt_provider.trim().to_ascii_lowercase();
+            next.tts_provider = tts_provider.trim().to_ascii_lowercase();
             next.ai_model = ai_model.trim().to_string();
             next.stt_model = stt_model.trim().to_string();
             next.tts_model = tts_model.trim().to_string();
@@ -308,7 +316,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
                 || next.tts_voice.is_empty()
             {
                 if let Some(window) = weak.upgrade() {
-                    window.set_settings_status("All model/voice fields are required.".into());
+                    window.set_settings_status("Providers must be openai/groq/local (AI), openai/groq/local (STT), or openai/elevenlabs/local (TTS), and all model/voice fields are required.".into());
                 }
                 return;
             }
@@ -328,10 +336,13 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             }
 
             if let Ok(mut current) = settings.lock() {
-                *current = next;
+                *current = next.clone();
             }
 
             if let Some(window) = weak.upgrade() {
+                window.set_settings_ai_provider(next.ai_provider.clone().into());
+                window.set_settings_stt_provider(next.stt_provider.clone().into());
+                window.set_settings_tts_provider(next.tts_provider.clone().into());
                 window.set_settings_status("Saved securely. API key is stored in Windows Credential Manager.".into());
                 window.set_settings_open(false);
                 window.set_status("Ready • Settings saved".into());
