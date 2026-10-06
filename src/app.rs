@@ -210,7 +210,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
         window.on_save_rest_pose(move || {
             if let Ok(mut runtime) = character.lock() {
                 runtime.save_rest_pose();
-                if let Some(window) = weak.upgrade() { window.set_status("Normal rest pose saved."); }
+                if let Some(window) = weak.upgrade() { window.set_status("Normal rest pose saved.".into()); }
             }
         });
     }
@@ -223,7 +223,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
                 runtime.restore_rest_pose();
                 runtime.set_paused(true);
                 if let Ok(Some(image)) = runtime.render_idle() { update_character_image(weak.clone(), image); }
-                if let Some(window) = weak.upgrade() { window.set_motion_button_text("Resume Motion".into()); window.set_status("Saved rest pose restored."); }
+                if let Some(window) = weak.upgrade() { window.set_motion_button_text("Resume Motion".into()); window.set_status("Saved rest pose restored.".into()); }
             }
         });
     }
