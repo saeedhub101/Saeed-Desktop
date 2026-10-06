@@ -140,10 +140,10 @@ function Open-TrayMenu {
     if($rect.Width -le 0 -or $rect.Height -le 0){
       throw "Saeed tray UIA element has neither a clickable point nor a usable bounding rectangle"
     }
-    $pt=[System.Drawing.Point]::new(
-      [int]($rect.X + ($rect.Width / 2)),
-      [int]($rect.Y + ($rect.Height / 2))
-    )
+    $pt=[pscustomobject]@{
+      X = [int]($rect.X + ($rect.Width / 2))
+      Y = [int]($rect.Y + ($rect.Height / 2))
+    }
   }
   [Win32Input]::SetCursorPos([int]$pt.X,[int]$pt.Y)|Out-Null
   [Win32Input]::mouse_event([Win32Input]::RIGHTDOWN,0,0,0,[UIntPtr]::Zero)
