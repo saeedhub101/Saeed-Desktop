@@ -1,20 +1,88 @@
-use std::{fs,path::PathBuf,sync::Mutex,time::{SystemTime,UNIX_EPOCH}};use serde::Serialize;use tauri::{AppHandle,Emitter,Manager,State};
-use crate::{logging::Logger,settings::{AppSettings,CharacterScale},tray,windows_mgr};
-pub struct AppState{pub settings:Mutex<AppSettings>,pub logger:Logger}
-#[derive(Serialize)]pub struct ModelPayload{pub id:String,pub data:Vec<u8>}
-fn data_dir(a:&AppHandle)->Result<PathBuf,String>{a.path().app_data_dir().map_err(|e|e.to_string())}
-pub fn run(){let result=tauri::Builder::default().plugin(tauri_plugin_single_instance::init(|app,_,_|{let _=windows_mgr::show_character(app);})).setup(|app|{let d=data_dir(&app.handle())?;fs::create_dir_all(&d)?;let logger=Logger::new(&d)?;let settings=AppSettings::load(&d).unwrap_or_default();settings.save(&d)?;app.manage(AppState{settings:Mutex::new(settings.clone()),logger});tray::install(&app.handle())?;if settings.character.visible{windows_mgr::create_character_window(&app.handle())?}Ok(())}).invoke_handler(tauri::generate_handler![get_settings,get_character_model,set_character_scale,set_low_power,import_character,debug_rotate_once,hide_character,show_character]).on_window_event(|w,e|{if let tauri::WindowEvent::CloseRequested{api,..}=e{api.prevent_close();let _=windows_mgr::destroy_character_window(&w.app_handle())}if let tauri::WindowEvent::Moved(p)=e{let a=w.app_handle();if let Some(st)=a.try_state::<AppState>(){if let Ok(mut s)=st.settings.lock(){s.character.position.x=p.x;s.character.position.y=p.y;if let Ok(d)=data_dir(&a){let _=s.save(&d)}}}}}).run(tauri::generate_context!());if let Err(e)=result{eprintln!("Saeed failed to start: {e}")}}
-#[tauri::command]fn get_settings(st:State<'_,AppState>)->AppSettings{st.settings.lock().unwrap().clone()}
-#[tauri::command]fn get_character_model(a:AppHandle,st:State<'_,AppState>)->Result<Option<ModelPayload>,String>{let s=st.settings.lock().map_err(|_|"settings lock".to_string())?.clone();let p=data_dir(&a)?.join("characters").join(&s.character.current_id).join("model.glb");if !p.exists(){return Ok(None)}Ok(Some(ModelPayload{id:s.character.current_id,data:fs::read(p).map_err(|e|e.to_string())?}))}
-#[tauri::command]fn set_character_scale(a:AppHandle,scale:CharacterScale,st:State<'_,AppState>)->Result<(),String>{let d=data_dir(&a)?;let mut s=st.settings.lock().map_err(|_|"settings lock".to_string())?;s.character.scale=scale;s.save(&d)}
-#[tauri::command]fn set_always_on_top(a:AppHandle,v:bool,st:State<'_,AppState>)->Result<(),String>{let d=data_dir(&a)?;let mut s=st.settings.lock().map_err(|_|"settings lock".to_string())?;s.character.always_on_top=v;s.save(&d)?;if let Some(w)=a.get_webview_window("character"){let _=w.set_always_on_top(v)};tray::refresh(&a);Ok(())}
-#[tauri::command]fn set_low_power(a:AppHandle,v:bool,st:State<'_,AppState>)->Result<(),String>{let d=data_dir(&a)?;let mut s=st.settings.lock().map_err(|_|"settings lock".to_string())?;s.performance.low_power=v;s.save(&d)?;tray::refresh(&a);Ok(())}
-#[tauri::command]fn import_character(a:AppHandle,source:String,st:State<'_,AppState>)->Result<String,String>{let src=PathBuf::from(source);if src.extension().and_then(|x|x.to_str()).map(|x|x.eq_ignore_ascii_case("glb"))!=Some(true){return Err("Please select a .glb file.".into())}let d=data_dir(&a)?;let stem=src.file_stem().and_then(|x|x.to_str()).unwrap_or("character");let safe:String=stem.chars().map(|c|if c.is_ascii_alphanumeric()||c=='-'||c=='_'{c}else{'_'}).collect();let n=SystemTime::now().duration_since(UNIX_EPOCH).map(|x|x.as_millis()).unwrap_or(0);let id=format!("{}-{n}",if safe.is_empty(){"character"}else{&safe});let cd=d.join("characters").join(&id);fs::create_dir_all(&cd).map_err(|e|e.to_string())?;fs::copy(src,cd.join("model.glb")).map_err(|e|e.to_string())?;let mut s=st.settings.lock().map_err(|_|"settings lock".to_string())?;s.character.current_id=id.clone();s.character.visible=true;s.save(&d)?;let _=a.emit("character-reload",());Ok(id)}
-#[tauri::command]fn debug_rotate_once(a:AppHandle)->Result<(),String>{if let Some(w)=a.get_webview_window("character"){w.emit("debug-rotate-once",()).map_err(|e|e.to_string())?}Ok(())}
-#[tauri::command]fn hide_character(a:AppHandle,st:State<'_,AppState>)->Result<(),String>{windows_mgr::destroy_character_window(&a)?;let d=data_dir(&a)?;let mut s=st.settings.lock().map_err(|_|"settings lock".to_string())?;s.character.visible=false;s.save(&d)?;tray::refresh(&a);Ok(())}
-#[tauri::command]fn show_character(a:AppHandle,st:State<'_,AppState>)->Result<(),String>{windows_mgr::create_character_window(&a)?;let d=data_dir(&a)?;let mut s=st.settings.lock().map_err(|_|"settings lock".to_string())?;s.character.visible=true;s.save(&d)?;tray::refresh(&a);Ok(())}
+use std::{fs, path::PathBuf, sync::Mutex, time::{SystemTime, UNIX_EPOCH}};
+use serde::Serialize;
+use tauri::{AppHandle, Emitter, Manager, State};
+use crate::{logging::Logger, settings::{AppSettings, CharacterScale}, tray, windows_mgr};
 
-pub fn tray_set_character_scale(a:AppHandle,scale:CharacterScale,st:State<'_,AppState>)->Result<(),String>{let d=data_dir(&a)?;let mut s=st.settings.lock().map_err(|_|"settings lock".to_string())?;s.character.scale=scale;s.save(&d)}
-pub fn tray_import_character(a:AppHandle,source:String,st:State<'_,AppState>)->Result<String,String>{import_character(a,source,st)}
-pub fn tray_hide_character(a:AppHandle,st:State<'_,AppState>)->Result<(),String>{hide_character(a,st)}
-pub fn tray_debug_rotate_once(a:AppHandle)->Result<(),String>{debug_rotate_once(a)}
+pub struct AppState { pub settings: Mutex<AppSettings>, pub logger: Logger }
+#[derive(Serialize)] pub struct ModelPayload { pub id: String, pub data: Vec<u8> }
+fn data_dir(a: &AppHandle) -> Result<PathBuf,String> { a.path().app_data_dir().map_err(|e| e.to_string()) }
+
+pub fn run() {
+    let result = tauri::Builder::default()
+        .plugin(tauri_plugin_single_instance::init(|app,_,_| { let _ = windows_mgr::show_character(app); }))
+        .setup(|app| {
+            let d = data_dir(&app.handle())?;
+            fs::create_dir_all(&d)?;
+            let logger = Logger::new(&d)?;
+            let settings = AppSettings::load(&d).unwrap_or_default();
+            settings.save(&d)?;
+            app.manage(AppState { settings: Mutex::new(settings.clone()), logger });
+            tray::install(&app.handle())?;
+            if settings.character.visible { windows_mgr::create_character_window(&app.handle())?; }
+            Ok(())
+        })
+        .invoke_handler(tauri::generate_handler![get_settings,get_character_model,set_character_scale,set_low_power,import_character,debug_rotate_once,hide_character,show_character])
+        .on_window_event(|w,e| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = e {
+                api.prevent_close();
+                let _ = windows_mgr::destroy_character_window(&w.app_handle());
+            }
+            if let tauri::WindowEvent::Moved(p) = e {
+                let a = w.app_handle();
+                if let Some(st) = a.try_state::<AppState>() {
+                    if let Ok(mut s) = st.settings.lock() {
+                        s.character.position.x = p.x;
+                        s.character.position.y = p.y;
+                        if let Ok(d) = data_dir(&a) { let _ = s.save(&d); }
+                    }
+                }
+            }
+        })
+        .run(tauri::generate_context!());
+    if let Err(e) = result { eprintln!("Saeed failed to start: {e}"); }
+}
+
+#[tauri::command] fn get_settings(st: State<'_,AppState>) -> AppSettings { st.settings.lock().unwrap().clone() }
+#[tauri::command] fn get_character_model(a: AppHandle, st: State<'_,AppState>) -> Result<Option<ModelPayload>,String> {
+    let s = st.settings.lock().map_err(|_|"settings lock".to_string())?.clone();
+    let p = data_dir(&a)?.join("characters").join(&s.character.current_id).join("model.glb");
+    if !p.exists() { return Ok(None); }
+    Ok(Some(ModelPayload { id: s.character.current_id, data: fs::read(p).map_err(|e|e.to_string())? }))
+}
+#[tauri::command] fn set_character_scale(a: AppHandle, scale: CharacterScale, st: State<'_,AppState>) -> Result<(),String> {
+    let d = data_dir(&a)?; let mut s = st.settings.lock().map_err(|_|"settings lock".to_string())?;
+    s.character.scale = scale; s.save(&d)
+}
+#[tauri::command] fn set_low_power(a: AppHandle, v: bool, st: State<'_,AppState>) -> Result<(),String> {
+    let d = data_dir(&a)?; let mut s = st.settings.lock().map_err(|_|"settings lock".to_string())?;
+    s.performance.low_power = v; s.save(&d)?; tray::refresh(&a); Ok(())
+}
+#[tauri::command] fn import_character(a: AppHandle, source: String, st: State<'_,AppState>) -> Result<String,String> {
+    let src = PathBuf::from(source);
+    if src.extension().and_then(|x|x.to_str()).map(|x|x.eq_ignore_ascii_case("glb")) != Some(true) { return Err("Please select a .glb file.".into()); }
+    let d = data_dir(&a)?; let stem = src.file_stem().and_then(|x|x.to_str()).unwrap_or("character");
+    let safe: String = stem.chars().map(|c| if c.is_ascii_alphanumeric() || c=='-' || c=='_' { c } else { '_' }).collect();
+    let n = SystemTime::now().duration_since(UNIX_EPOCH).map(|x|x.as_millis()).unwrap_or(0);
+    let id = format!("{}-{n}", if safe.is_empty() { "character" } else { &safe });
+    let cd = d.join("characters").join(&id); fs::create_dir_all(&cd).map_err(|e|e.to_string())?;
+    fs::copy(src, cd.join("model.glb")).map_err(|e|e.to_string())?;
+    let mut s = st.settings.lock().map_err(|_|"settings lock".to_string())?;
+    s.character.current_id = id.clone(); s.character.visible = true; s.save(&d)?;
+    let _ = a.emit("character-reload", ()); Ok(id)
+}
+#[tauri::command] fn debug_rotate_once(a: AppHandle) -> Result<(),String> {
+    if let Some(w) = a.get_webview_window("character") { w.emit("debug-rotate-once", ()).map_err(|e|e.to_string())?; }
+    Ok(())
+}
+#[tauri::command] fn hide_character(a: AppHandle, st: State<'_,AppState>) -> Result<(),String> {
+    windows_mgr::destroy_character_window(&a)?; let d = data_dir(&a)?;
+    let mut s = st.settings.lock().map_err(|_|"settings lock".to_string())?; s.character.visible = false; s.save(&d)?; tray::refresh(&a); Ok(())
+}
+#[tauri::command] fn show_character(a: AppHandle, st: State<'_,AppState>) -> Result<(),String> {
+    windows_mgr::create_character_window(&a)?; let d = data_dir(&a)?;
+    let mut s = st.settings.lock().map_err(|_|"settings lock".to_string())?; s.character.visible = true; s.save(&d)?; tray::refresh(&a); Ok(())
+}
+pub fn tray_set_character_scale(a: AppHandle, scale: CharacterScale, st: State<'_,AppState>) -> Result<(),String> { set_character_scale(a,scale,st) }
+pub fn tray_import_character(a: AppHandle, source: String, st: State<'_,AppState>) -> Result<String,String> { import_character(a,source,st) }
+pub fn tray_hide_character(a: AppHandle, st: State<'_,AppState>) -> Result<(),String> { hide_character(a,st) }
+pub fn tray_debug_rotate_once(a: AppHandle) -> Result<(),String> { debug_rotate_once(a) }
