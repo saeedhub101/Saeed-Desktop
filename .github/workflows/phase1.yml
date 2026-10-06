@@ -77,12 +77,24 @@ jobs:
           $installer.FullName | Out-File "$env:RUNNER_TEMP\installer.txt" -Encoding utf8
           Write-Host "Installer: $($installer.FullName)"
 
-      - name: Run complete Phase 1 installed-EXE smoke
+      - name: Run complete Phase 1 core installed-EXE smoke
+        id: core_smoke
+        continue-on-error: true
         shell: pwsh
         run: |
           $installer = (Get-Content "$env:RUNNER_TEMP\installer.txt" -Raw).Trim()
           if (!(Test-Path -LiteralPath $installer)) { throw "Installer not found: $installer" }
           powershell -NoProfile -ExecutionPolicy Bypass -File scripts/phase1-smoke.ps1 -Installer $installer
+
+      - name: Run independent native Tray smoke
+        id: tray_smoke
+        if: always()
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          $installer = (Get-Content "$env:RUNNER_TEMP\\installer.txt" -Raw).Trim()
+          if (!(Test-Path -LiteralPath $installer)) { throw "Installer not found: $installer" }
+          powershell -NoProfile -ExecutionPolicy Bypass -File scripts/phase1-tray-smoke.ps1 -Installer $installer
 
       - name: Collect Phase 1 evidence
         if: always()
