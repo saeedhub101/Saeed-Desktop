@@ -60,17 +60,21 @@ function shutdownScene(): void {
   scene = null;
 }
 
-function message(text: string): void {
+function message(text: string, duration = 5000): void {
   status.textContent = text;
   status.classList.add("visible");
 
   if (statusTimer !== undefined) {
     clearTimeout(statusTimer);
+    statusTimer = undefined;
   }
 
-  statusTimer = window.setTimeout(() => {
-    status.classList.remove("visible");
-  }, 5000);
+  if (duration > 0) {
+    statusTimer = window.setTimeout(() => {
+      status.classList.remove("visible");
+      statusTimer = undefined;
+    }, duration);
+  }
 }
 
 function resizeScene(size: number): void {
@@ -113,6 +117,7 @@ function installContextRecovery(): void {
           console.error(error);
           message(
             "Saeed could not load the character model.",
+            0,
           );
         });
       } catch (error) {
@@ -207,6 +212,7 @@ async function init(): Promise<void> {
         });
         message(
           "Saeed could not load the character model.",
+          0,
         );
       });
     },
@@ -222,6 +228,7 @@ async function init(): Promise<void> {
     });
     message(
       "Saeed could not load the character model.",
+      0,
     );
   }
 }
