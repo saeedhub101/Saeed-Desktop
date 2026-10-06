@@ -12,3 +12,10 @@
 - Runtime acceptance uses Windows UI Automation and Win32 input to verify the real tray menu, window lifecycle, dragging, transparent hit-testing, character replacement, persistence, and clean quit.
 - The smoke also records process-tree memory and CPU evidence and verifies WebView2 descendants disappear after Hide.
 - The CI gate is intentionally fail-fast for Phase 1 acceptance failures; a green compile without a green installed-EXE smoke is not a Phase 1 pass.
+
+## 2026-10-06 — Core/Tray owns lifecycle
+- Rebuilt the Phase 1 runtime around a permanent Rust Core/Tray owner.
+- Character owns only Three.js, renderer, GLB, rig/pose/animation, and character-local input.
+- Character Hide destroys the character WebView/renderer/model resources; it is never the application owner.
+- Voice resources will be tied to Character presence in later phases; if Character and Chat are both closed, Brain and voice resources are destroyed and only Tray/Core remains.
+- Existing Markdown specifications are retained; obsolete lifecycle-owner modules are removed instead of layering another manager over them.
