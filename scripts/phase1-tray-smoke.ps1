@@ -142,10 +142,14 @@ public static class TraySmokeKeys {
       return $true
     }
 
-    # Show/Hide
-    Assert (InvokeTopMenu 0) "tray-menu-show-hide-command" "native menu selected the enabled Show/Hide command"
+    # Show/Hide: exercise both directions. The enabled item is selected by HOME.
+    Assert (InvokeTopMenu 0) "tray-menu-hide-command" "native menu selected the enabled Hide command"
+    $hidden=Wait-Until { if((Get-WindowHandle)-eq [IntPtr]::Zero){$true}else{$null}} 5000
+    Assert $hidden "tray-menu-hide-applied" "Hide command destroyed the character window"
+
+    Assert (InvokeTopMenu 0) "tray-menu-show-command" "native menu selected the enabled Show command"
     $shown=Wait-Until { $z=Get-WindowHandle;if($z -ne [IntPtr]::Zero){$z}else{$null}} 5000
-    Assert ($shown -ne $null) "tray-menu-show-command" "Show/Hide command left the character window available"
+    Assert ($shown -ne $null) "tray-menu-show-applied" "Show command recreated the character window"
 
     # Character Size -> Small, Medium, Large
     $sizes=@{small=0;medium=1;large=2}
@@ -184,7 +188,7 @@ public static class TraySmokeKeys {
     Assert (InvokeTopMenu 6) "tray-quit-command" "native menu selected Quit"
     $exited=Wait-Until { if((Get-SaeedProcess).Count -eq 0){$true}else{$null}} 10000
     Assert $exited "tray-quit" "Quit removed the Saeed process"
-    Assert ((Get-SaeedProcess).Count -eq 1) "tray-process-lifetime" "tray interactions did not terminate the application"
+    Assert ((Get-SaeedProcess).Count -eq 0) "tray-process-lifetime" "Quit terminated the application"
   }
 }
 
