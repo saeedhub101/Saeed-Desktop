@@ -135,6 +135,7 @@ public static class TraySmokeKeys {
     function InvokeTopMenu([int]$downCount,[switch]$OpenSubmenu,[int]$SubmenuDown=0) {
       $p=OpenMenuNative
       if($p -eq $null){ return $false }
+      SendKey 0x24 # VK_HOME selects the first enabled top-level item
       for($i=0;$i -lt $downCount;$i++){ SendKey 0x28 }
       if($OpenSubmenu){ SendKey 0x27; for($i=0;$i -lt $SubmenuDown;$i++){ SendKey 0x28 } }
       SendKey 0x0D
