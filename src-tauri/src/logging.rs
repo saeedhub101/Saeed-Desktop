@@ -35,7 +35,7 @@ impl Logger {
         let file = OpenOptions::new()
             .create(true)
             .append(true)
-            .open(path)
+             .open(&path)
             .map_err(|e| e.to_string())?;
 
         Ok(Self {
