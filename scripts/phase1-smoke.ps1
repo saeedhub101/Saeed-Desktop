@@ -63,8 +63,11 @@ function Get-TreeMemoryMB([int]$RootPid) {
   return [math]::Round($sum/1MB,1)
 }
 function Get-WindowHandle {
+  $h=[Win32Input]::FindWindow($null,"Saeed")
+  if($h -ne [IntPtr]::Zero){ return $h }
   $p=Get-SaeedProcess | Select-Object -First 1
   if(!$p){return [IntPtr]::Zero}
+  $p.Refresh()
   return $p.MainWindowHandle
 }
 function Get-Rect([IntPtr]$h) {
