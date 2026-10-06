@@ -1,0 +1,40 @@
+name: Phase 1 verification
+on:
+  push:
+    branches: [main]
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install dependencies
+        run: npm install
+      - name: Generate icons
+        run: npm run icons
+      - name: Verify generated icon set
+        shell: pwsh
+        run: |
+          $files = @("src-tauri/icons/32x32.png","src-tauri/icons/128x128.png","src-tauri/icons/128x128@2x.png","src-tauri/icons/icon.png","src-tauri/icons/icon.ico")
+          foreach ($f in $files) { if (!(Test-Path $f)) { throw "Missing generated icon: $f" } }
+          if (!(Test-Path "src/assets/icon.png")) { throw "Missing copied source icon" }
+      - name: Build Windows installer
+        run: npm run build
+      - name: Verify Windows artifacts
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem -Path src-tauri/target/release -Filter "saeed.exe" -Recurse | Select-Object -First 1
+          if (!$exe) { throw "saeed.exe not found" }
+          $nsis = Get-ChildItem -Path src-tauri/target/release/bundle/nsis -Filter "*.exe" | Select-Object -First 1
+          if (!$nsis) { throw "NSIS installer not found" }
+          Write-Host "EXE=$($exe.FullName)"
+          Write-Host "INSTALLER=$($nsis.FullName)"
+      - name: Single-instance source verification
+        shell: pwsh
+        run: |
+          $app = Get-Content src-tauri/src/app.rs -Raw
+          if ($app -notmatch "tauri_plugin_single_instance::init") { throw "Single instance plugin not initialized" }
+          if ($app -notmatch "windows_mgr::show_character") { throw "Second launch does not restore character" }
