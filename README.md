@@ -82,3 +82,12 @@ Saeed's microphone activation is independent of the OpenAI API key. Set the STT 
 - The current AI provider is still OpenAI; selecting local STT/TTS does not silently change the AI provider.
 
 This adapter is intentionally command-based so Saeed can connect to an installed local engine without adding a heavyweight speech runtime to the desktop executable. For example, local Whisper/whisper.cpp can be used for STT and Piper can be used for TTS when installed separately. Whisper-style local CLIs commonly accept a WAV input file, while Piper-style CLIs can generate a WAV output file. 
+
+
+## Local AI Provider — Development Contract
+
+Set the AI model field to `local` to use the local AI command adapter without an OpenAI API key.
+
+- `SAEED_LOCAL_AI_COMMAND`: local command that receives `{input}` as a UTF-8 JSON file containing the shared conversation and prints the assistant response to stdout.
+- Local AI, local STT, and local TTS can therefore form a complete offline voice path when their external local engines are installed and configured.
+- The adapters do not embed a heavyweight local model runtime in Saeed; the installed local engine remains responsible for inference.
