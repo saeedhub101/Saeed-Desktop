@@ -26,7 +26,7 @@
 
 ## State persistence across destroy
 
-Everything needed to rebuild lives on disk or in the Core: conversation, settings, character profile, last window position. Destroying a service must never lose user data.
+Everything needed to rebuild lives on disk or in the Core: conversation, settings, and character profile. Window position is runtime-only: it is never persisted, and every fresh process launch places the character automatically at the bottom-right of the Windows work area. Destroying a service must never lose user data.
 
 ## Budgets (targets, to verify)
 
