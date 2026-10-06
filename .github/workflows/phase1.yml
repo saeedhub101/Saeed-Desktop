@@ -96,6 +96,11 @@ jobs:
           if (!(Test-Path -LiteralPath $installer)) { throw "Installer not found: $installer" }
           powershell -NoProfile -ExecutionPolicy Bypass -File scripts/phase1-tray-smoke.ps1 -Installer $installer
 
+      - name: Enforce core and Tray smoke results
+        if: always()
+        shell: pwsh
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/phase1-smoke-gate.ps1
+
       - name: Collect Phase 1 evidence
         if: always()
         shell: pwsh
