@@ -1,11 +1,11 @@
-pub mod controller;
-
-pub use controller::{VoiceController, VoiceTurnResult};
-
 //! Voice hardware and provider boundary.
 //!
 //! The microphone is active only while the user explicitly enables Mic mode.
 //! Speech detection is local; network work happens outside the audio callback.
+
+pub mod controller;
+
+pub use controller::{VoiceController, VoiceTurnResult};
 
 use std::io::Cursor;
 use std::sync::{Arc, Mutex};
