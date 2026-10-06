@@ -222,6 +222,13 @@ jobs:
             throw "Saeed exited during startup"
           }
 
+          $mainWindowHandle = $running.MainWindowHandle
+          if (!$mainWindowHandle -or $mainWindowHandle -eq 0) {
+            throw "Saeed process is running but no main window was created"
+          }
+
+          Write-Host "Startup window handle=$mainWindowHandle"
+
           $before = @(Get-Process -Name "saeed" -ErrorAction SilentlyContinue).Count
           if ($before -ne 1) {
             throw "Expected exactly one Saeed process after first launch; found $before"
