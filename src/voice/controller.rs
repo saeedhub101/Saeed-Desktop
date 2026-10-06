@@ -6,13 +6,13 @@
 
 use std::sync::{Arc, Mutex};
 
-use crate::ai::{AiProvider, AiRequest, LocalCommandAiProvider, OpenAiProvider};
+use crate::ai::{AiProvider, AiRequest, LocalCommandAiProvider, OpenAiProvider, OpenAiCompatibleProvider};
 use crate::core::SaeedCore;
 use crate::storage::{AppSettings, Storage};
 
 use super::{
     AudioPlayer, LocalCommandSpeechToText, LocalCommandTextToSpeech,
-    OpenAiSpeechToText, OpenAiTextToSpeech, SpeechToText, TextToSpeech,
+    OpenAiSpeechToText, OpenAiTextToSpeech, OpenAiCompatibleSpeechToText, ElevenLabsTextToSpeech, SpeechToText, TextToSpeech,
 };
 
 #[derive(Debug, Clone)]
@@ -34,14 +34,16 @@ impl VoiceController {
             .map_err(|_| "Settings state is unavailable.".to_string())?
             .clone();
 
-        let transcript = if settings.stt_model.trim().eq_ignore_ascii_case("local") {
-            let stt = LocalCommandSpeechToText::from_environment()?;
-            stt.transcribe(audio)?
-        } else {
-            let api_key = settings.openai_api_key.clone()
-                .ok_or_else(|| "OpenAI STT selected: add your OpenAI API key in Settings.".to_string())?;
-            let stt = OpenAiSpeechToText::from_config(api_key, settings.stt_model)?;
-            stt.transcribe(audio)?
+        let transcript = match settings.stt_provider.trim().to_ascii_lowercase().as_str() {
+            "local" => LocalCommandSpeechToText::from_environment()?.transcribe(audio)?,
+            "groq" => {
+                let key=settings.groq_api_key.clone().ok_or_else(|| "Groq STT selected: add the Groq API key in Settings.".to_string())?;
+                OpenAiCompatibleSpeechToText::new(key, settings.stt_model, "https://api.groq.com/openai/v1/audio/transcriptions").transcribe(audio)?
+            }
+            _ => {
+                let key=settings.openai_api_key.clone().ok_or_else(|| "OpenAI STT selected: add your OpenAI API key in Settings.".to_string())?;
+                OpenAiSpeechToText::from_config(key, settings.stt_model)?.transcribe(audio)?
+            }
         };
 
         let messages = {
@@ -58,14 +60,16 @@ impl VoiceController {
             core.snapshot_messages()
         };
 
-        let response = if settings.ai_model.trim().eq_ignore_ascii_case("local") {
-            let ai = LocalCommandAiProvider::from_environment()?;
-            ai.complete(&AiRequest { messages })?.text
-        } else {
-            let api_key = settings.openai_api_key.clone()
-                .ok_or_else(|| "OpenAI AI selected: add your OpenAI API key in Settings.".to_string())?;
-            let ai = OpenAiProvider::from_config(api_key, settings.ai_model)?;
-            ai.complete(&AiRequest { messages })?.text
+        let response = match settings.ai_provider.trim().to_ascii_lowercase().as_str() {
+            "local" => LocalCommandAiProvider::from_environment()?.complete(&AiRequest { messages })?.text,
+            "groq" => {
+                let key=settings.groq_api_key.clone().ok_or_else(|| "Groq AI selected: add the Groq API key in Settings.".to_string())?;
+                OpenAiCompatibleProvider::new(key, settings.ai_model, "https://api.groq.com/openai/v1/chat/completions").complete(&AiRequest { messages })?.text
+            }
+            _ => {
+                let key=settings.openai_api_key.clone().ok_or_else(|| "OpenAI AI selected: add your OpenAI API key in Settings.".to_string())?;
+                OpenAiProvider::from_config(key, settings.ai_model)?.complete(&AiRequest { messages })?.text
+            }
         };
 
         {
@@ -93,14 +97,16 @@ impl VoiceController {
             .map_err(|_| "Settings state is unavailable.".to_string())?
             .clone();
 
-        let spoken_audio = if settings.tts_model.trim().eq_ignore_ascii_case("local") {
-            let tts = LocalCommandTextToSpeech::from_environment()?;
-            tts.synthesize(response)?
-        } else {
-            let api_key = settings.openai_api_key
-                .ok_or_else(|| "OpenAI TTS selected: add your OpenAI API key in Settings.".to_string())?;
-            let tts = OpenAiTextToSpeech::from_config(api_key, settings.tts_model, settings.tts_voice)?;
-            tts.synthesize(response)?
+        let spoken_audio = match settings.tts_provider.trim().to_ascii_lowercase().as_str() {
+            "local" => LocalCommandTextToSpeech::from_environment()?.synthesize(response)?,
+            "elevenlabs" => {
+                let key=settings.elevenlabs_api_key.ok_or_else(|| "ElevenLabs TTS selected: add the ElevenLabs API key in Settings.".to_string())?;
+                ElevenLabsTextToSpeech::new(key, settings.tts_voice, settings.tts_model).synthesize(response)?
+            }
+            _ => {
+                let key=settings.openai_api_key.ok_or_else(|| "OpenAI TTS selected: add your OpenAI API key in Settings.".to_string())?;
+                OpenAiTextToSpeech::from_config(key, settings.tts_model, settings.tts_voice)?.synthesize(response)?
+            }
         };
 
         AudioPlayer::play(&spoken_audio)
