@@ -80,12 +80,24 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     let character = Arc::new(Mutex::new(CharacterRuntime::new(520, 520)));
     {
         let mut runtime = character.lock().map_err(|_| "Character runtime is unavailable.")?;
-        runtime.set_visibility(CharacterVisibility::Visible)?;
-        if let Some(image) = runtime.render_idle()? {
-            window.set_character_image(slint::Image::from_rgba8(image));
-            window.set_status("Ready • 3D character loaded".into());
-        } else {
-            clear_character_image(&window);
+        match runtime.set_visibility(CharacterVisibility::Visible) {
+            Ok(()) => match runtime.render_idle() {
+                Ok(Some(image)) => {
+                    window.set_character_image(slint::Image::from_rgba8(image));
+                    window.set_status("Ready • 3D character loaded".into());
+                }
+                Ok(None) => clear_character_image(&window),
+                Err(error) => {
+                    clear_character_image(&window);
+                    window.set_character_button_text("Show Saeed".into());
+                    window.set_status(format!("Ready • character unavailable: {error}").into());
+                }
+            },
+            Err(error) => {
+                clear_character_image(&window);
+                window.set_character_button_text("Show Saeed".into());
+                window.set_status(format!("Ready • character unavailable: {error}").into());
+            }
         }
     }
     let voice_active = Arc::new(AtomicBool::new(false));
