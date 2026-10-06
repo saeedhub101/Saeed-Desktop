@@ -28,6 +28,7 @@ pub struct AppState {
     pub settings: Mutex<AppSettings>,
     pub logger: Logger,
     pub position_generation: AtomicU64,
+    pub position_save_scheduled: std::sync::atomic::AtomicBool,
     /// Sender the renderer's "cleanup done" acknowledgement is delivered through
     /// while a hide handshake is in progress.
     pub cleanup_ack: Mutex<Option<mpsc::Sender<()>>>,
@@ -72,6 +73,7 @@ pub fn run() {
                 settings: Mutex::new(settings.clone()),
                 logger,
                 position_generation: AtomicU64::new(0),
+                position_save_scheduled: std::sync::atomic::AtomicBool::new(false),
                 cleanup_ack: Mutex::new(None),
                 probe_generation: AtomicU64::new(0),
                 hide_state: Mutex::new(HideState::Idle),
@@ -128,28 +130,46 @@ pub fn run() {
                         settings.character.position.y = position.y;
                     }
 
-                    let generation =
-                        state.position_generation.fetch_add(1, Ordering::SeqCst) + 1;
-                    let app_for_save = app.clone();
+                    state.position_generation.fetch_add(1, Ordering::SeqCst);
 
-                    thread::spawn(move || {
-                        thread::sleep(Duration::from_millis(500));
+                    if !state.position_save_scheduled.swap(true, Ordering::SeqCst) {
+                        let app_for_save = app.clone();
 
-                        let Some(state) = app_for_save.try_state::<AppState>() else {
-                            return;
-                        };
+                        thread::spawn(move || loop {
+                            thread::sleep(Duration::from_millis(500));
 
-                        if state.position_generation.load(Ordering::SeqCst) != generation {
-                            return;
-                        }
+                            let Some(state) = app_for_save.try_state::<AppState>() else {
+                                return;
+                            };
 
-                        if let Ok(settings) = state.settings.lock() {
-                            if let Ok(dir) = data_dir(&app_for_save) {
-                                let _ = settings.save(&dir);
-                                state.logger.info("Character position saved");
+                            let generation =
+                                state.position_generation.load(Ordering::SeqCst);
+
+                            thread::sleep(Duration::from_millis(500));
+
+                            if state.position_generation.load(Ordering::SeqCst) != generation {
+                                continue;
                             }
-                        };
-                    });
+
+                            if let Ok(settings) = state.settings.lock() {
+                                if let Ok(dir) = data_dir(&app_for_save) {
+                                    let _ = settings.save(&dir);
+                                    state.logger.info("Character position saved");
+                                }
+                            }
+
+                            state.position_save_scheduled.store(false, Ordering::SeqCst);
+
+                            if state.position_generation.load(Ordering::SeqCst) != generation {
+                                if state.position_save_scheduled.swap(true, Ordering::SeqCst) {
+                                    break;
+                                }
+                                continue;
+                            }
+
+                            break;
+                        });
+                    }
                 }
                 _ => {}
             }
