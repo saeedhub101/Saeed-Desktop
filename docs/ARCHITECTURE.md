@@ -17,7 +17,7 @@
                                                     on demand        on demand
 ```
 
-Only the Core is permanent. Everything else is created when needed and destroyed when not (see `RESOURCE_LIFECYCLE.md`).
+Only the Core/Tray is permanent. It is the program's lifecycle owner. It creates and destroys Character, Chat, Brain, Voice, and Control Center as needed. Character owns only the character runtime: Three.js, renderer, GLB, rig, pose, animation, and character-local input. Nothing outside Character may own character motion.
 
 ## 2. Core (Rust)
 
@@ -30,7 +30,7 @@ Only the Core is permanent. Everything else is created when needed and destroyed
 | `secrets` | API keys via Windows Credential Manager / DPAPI. |
 | `permissions` | Permission Manager: category and tool policy `allow` / `deny` / `ask`. |
 | `store` | SQLite: conversations, messages, memory, learned skills. |
-| `windows_mgr` | Create/destroy windows (character, chat, control center). |
+| `windows_mgr` | Not a lifecycle owner. Window creation/destruction is orchestrated by Core; window-specific code stays local to each feature. |
 | `plugins` | Discover, install, start, stop, and call plugins. |
 
 ## 3. Event bus (contract between layers)
@@ -92,7 +92,7 @@ Brain reply → TTS provider → audio out
 Realtime mode: Mic ⇄ Realtime provider (audio in/out) → transcript events to the same session
 ```
 
-- Capture lives in Rust so it works while the 3D window is destroyed.
+- Voice is tied to Character presence. When Character is destroyed, microphone capture, VAD, STT, and TTS resources are stopped/destroyed. Brain may remain alive only when Chat is still open.
 - Open-mic VAD; no push-to-talk.
 - Mute destroys the TTS pipeline only; replies still appear in the speech bubble.
 - Lip sync: TTS provider emits visemes or the engine derives a simple amplitude-based mouth movement; sent to the Character Engine as `character.speech_frame`.
@@ -103,7 +103,7 @@ Realtime mode: Mic ⇄ Realtime provider (audio in/out) → transcript events to
 - Hosts Three.js scene and the Character Engine (see `CHARACTER_ENGINE.md`).
 - Click-through outside the character silhouette (toggle ignore-cursor-events from a pixel alpha test).
 - Speech bubble is an HTML overlay above the head, anchored to the head bone's screen position.
-- Walking on the desktop moves the window itself; the animation cycle plays inside.
+- Character owns all character-local movement and animation. Brain emits intents only; it never manipulates bones, rigs, Three.js, or renderer state.
 
 ## 10. Windows
 
