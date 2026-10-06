@@ -272,6 +272,7 @@ fn rasterize_triangle(
         return;
     }
 
+    let pixel_width = pixels.width() as usize;
     let out = pixels.make_mut_slice();
     for y in min_y..=max_y {
         for x in min_x..=max_x {
@@ -285,7 +286,7 @@ fn rasterize_triangle(
             }
 
             let z = w0 * a.2 + w1 * b.2 + w2 * c.2;
-            let index = y as usize * pixels.width() as usize + x as usize;
+            let index = y as usize * pixel_width + x as usize;
             if z < depth[index] {
                 depth[index] = z;
                 out[index] = Rgba8Pixel { r: color[0], g: color[1], b: color[2], a: color[3] };
