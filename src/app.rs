@@ -37,6 +37,7 @@ fn show_error(window: &AppWindow, message: String) {
 fn schedule_character_action(
     character: Arc<Mutex<CharacterRuntime>>,
     weak: slint::Weak<AppWindow>,
+    character_weak: slint::Weak<CharacterWindow>,
     delay: Duration,
 ) {
     slint::Timer::single_shot(delay, move || {
@@ -45,12 +46,23 @@ fn schedule_character_action(
             return;
         }
         match runtime.render_next() {
-            Ok(Some(image)) => update_character_image(weak.clone(), image),
+            Ok(Some(image)) => {
+                update_character_image(weak.clone(), image.clone());
+                update_character_window_image(character_weak.clone(), image);
+            }
             Ok(None) => {}
             Err(error) => show_error_if_alive(&weak, &format!("Character runtime error: {error}")),
         }
         drop(runtime);
-        schedule_character_action(character, weak, Duration::from_millis(1200));
+        schedule_character_action(character, weak, character_weak, Duration::from_millis(1200));
+    });
+}
+
+fn update_character_window_image(weak: slint::Weak<CharacterWindow>, pixels: slint::SharedPixelBuffer<slint::Rgba8Pixel>) {
+    let _ = slint::invoke_from_event_loop(move || {
+        if let Some(window) = weak.upgrade() {
+            window.set_character_image(slint::Image::from_rgba8(pixels));
+        }
     });
 }
 
@@ -82,6 +94,7 @@ fn update_voice_ui(weak: &slint::Weak<AppWindow>, button: &str, status: &str) {
 
 pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     let window = AppWindow::new()?;
+    let character_window = CharacterWindow::new()?;
     let storage = Storage::open_default()?;
     let settings = storage.load_settings()?;
     let settings = Arc::new(Mutex::new(settings));
@@ -104,12 +117,14 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
         window.set_conversation(format!("{}: {}", last.role, last.content).into());
     }
     let character = Arc::new(Mutex::new(CharacterRuntime::new(520, 520)));
+    let drag_origin = Arc::new(Mutex::new((0i32, 0i32)));
     {
         let mut runtime = character.lock().map_err(|_| "Character runtime is unavailable.")?;
         match runtime.set_visibility(CharacterVisibility::Visible) {
             Ok(()) => match runtime.render_idle() {
                 Ok(Some(image)) => {
-                    window.set_character_image(slint::Image::from_rgba8(image));
+                    window.set_character_image(slint::Image::from_rgba8(image.clone()));
+                    character_window.set_character_image(slint::Image::from_rgba8(image));
                     window.set_status("Ready • 3D character loaded".into());
                 }
                 Ok(None) => clear_character_image(&window),
@@ -128,9 +143,12 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     }
     // Real character behavior is scheduled as one action at a time. No permanent timer or
     // render loop is kept alive while the character is hidden or paused.
+    let _ = character_window.show();
+    position_character_window(&character_window);
     schedule_character_action(
         Arc::clone(&character),
         window.as_weak(),
+        character_window.as_weak(),
         Duration::from_secs(2),
     );
 
