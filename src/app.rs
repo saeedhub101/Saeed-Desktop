@@ -11,7 +11,8 @@ use saeed_desktop::character::{CharacterRuntime, CharacterState, CharacterVisibi
 use saeed_desktop::storage::Storage;
 use saeed_desktop::voice::{MicrophoneRecorder, VoiceController};
 use slint::SharedString;
-use crate::AppWindow;
+slint::include_modules!();
+
 
 
 const VOICE_ACTIVATION_THRESHOLD: f32 = 0.06;
