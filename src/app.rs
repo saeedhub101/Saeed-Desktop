@@ -1,3 +1,5 @@
+use std::cell::RefCell;
+use std::rc::Rc;
 use std::sync::{
     Arc, Mutex,
     atomic::{AtomicBool, Ordering},
@@ -103,6 +105,26 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
     }
+    // Real character behavior: Slint owns a lightweight event-loop timer.
+    // It advances one procedural action at a time; there is no render loop or worker thread.
+    let character_timer = Rc::new(RefCell::new(slint::Timer::default()));
+    {
+        let timer = Rc::clone(&character_timer);
+        let character = Arc::clone(&character);
+        let weak = window.as_weak();
+        timer.borrow_mut().start(slint::TimerMode::Repeated, Duration::from_millis(700), move || {
+            let Ok(mut runtime) = character.lock() else { return; };
+            if runtime.visibility() != CharacterVisibility::Visible || runtime.is_paused() {
+                return;
+            }
+            match runtime.render_next() {
+                Ok(Some(image)) => update_character_image(weak.clone(), image),
+                Ok(None) => {}
+                Err(error) => show_error_if_alive(&weak, &format!("Character runtime error: {error}")),
+            }
+        });
+    }
+
     let voice_active = Arc::new(AtomicBool::new(false));
     let voice_worker_running = Arc::new(AtomicBool::new(false));
     let weak = window.as_weak();
