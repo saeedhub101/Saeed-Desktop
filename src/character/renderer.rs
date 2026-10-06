@@ -114,7 +114,7 @@ impl GlbCharacterRenderer {
         for t in &triangles { for v in t.vertices { for p in [v.position] {
             min.x=min.x.min(p.x);min.y=min.y.min(p.y);min.z=min.z.min(p.z);
             max.x=max.x.max(p.x);max.y=max.y.max(p.y);max.z=max.z.max(p.z);
-        }}}}
+        }}}
         let center=min.add(max).mul(0.5);
         let e=max.sub(min);
         let scale=2.0/e.x.max(e.y).max(e.z).max(0.001);
