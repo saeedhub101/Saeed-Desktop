@@ -1,4 +1,4 @@
-use std::{path::PathBuf, thread};
+use std::thread;
 use rfd::FileDialog;
 use tauri::{image::Image, menu::{CheckMenuItemBuilder, MenuBuilder, MenuItemBuilder, SubmenuBuilder}, tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent}, AppHandle, Emitter, Manager};
 use crate::{app::AppState, settings::CharacterScale, windows_mgr};
