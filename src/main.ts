@@ -159,6 +159,9 @@ async function init(): Promise<void> {
     () =>
       scene?.load().catch((error) => {
         console.error(error);
+        void invoke("log_error", {
+          message: String(error),
+        });
         message(
           "Saeed could not load the character model.",
         );
@@ -170,6 +173,9 @@ async function init(): Promise<void> {
     scene.scheduler.requestRender();
   } catch (error) {
     console.error(error);
+    void invoke("log_error", {
+      message: String(error),
+    });
     message(
       "Saeed could not load the character model.",
     );
@@ -187,6 +193,9 @@ window.addEventListener("resize", () => {
 
 void init().catch((error) => {
   console.error(error);
+  void invoke("log_error", {
+    message: String(error),
+  });
   message(
     "Saeed could not initialize the character window.",
   );
