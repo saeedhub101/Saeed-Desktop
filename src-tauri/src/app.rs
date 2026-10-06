@@ -164,7 +164,7 @@ pub fn run() {
                                 let _ = settings.save(&dir);
                                 state.logger.info("Character position saved");
                             }
-                        }
+                        };
                     });
                 }
                 _ => {}
