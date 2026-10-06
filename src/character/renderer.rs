@@ -202,7 +202,7 @@ fn collect_node(
                 for k in 0..3{
                     let idx=tri[k] as usize;
                     verts[k]=Vertex{
-                        position:world.transform(positions[idx]),
+                        position:if skin_index.is_some() { positions[idx] } else { world.transform(positions[idx]) },
                         joints:joints.as_ref().and_then(|v|v.get(idx)).copied().unwrap_or([0;4]),
                         weights:weights.as_ref().and_then(|v|v.get(idx)).copied().unwrap_or([1.0,0.0,0.0,0.0]),
                     };
