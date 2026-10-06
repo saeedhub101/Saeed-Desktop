@@ -4,7 +4,7 @@ param(
 )
 
 $ErrorActionPreference = "Continue"
-Set-StrictMode -Version Latest
+Set-StrictMode -Off
 
 Add-Type -AssemblyName UIAutomationClient
 Add-Type -AssemblyName UIAutomationTypes
@@ -143,7 +143,7 @@ function Open-TrayMenu {
   $pt=$null
   try { $pt=$tray.GetClickablePoint() } catch {}
   if($null -eq $pt){
-    $rect=$tray.Current.BoundingRectangle
+    try { $rect=$tray.Current.BoundingRectangle } catch { Fail "tray-open" "Saeed tray UIA bounding rectangle could not be read"; return $false }
     if($rect.Width -le 0 -or $rect.Height -le 0){
       Fail "tray-open" "Saeed tray UIA element has no usable clickable geometry"; return $false
     }
@@ -320,8 +320,8 @@ if($open){ try { Invoke-UIA $open } catch { Record-Exception "change-character-o
 Start-Sleep -Seconds 3
 $settings=Get-Content $settingsPath -Raw|ConvertFrom-Json
 Assert ($settings.character.currentId -ne "default") "change-character" "real Change Character flow selected a new character"
-$modelPath=Get-ChildItem "$env:APPDATA\Saeed\characters\$($settings.character.currentId)\model.glb" -ErrorAction Stop
-Assert $modelPath "character-storage" "new GLB copied under %APPDATA%\Saeed\characters"
+$modelPath=Get-ChildItem "$env:APPDATA\Saeed\characters\$($settings.character.currentId)\model.glb" -ErrorAction SilentlyContinue
+Assert ($null -ne $modelPath) "character-storage" "new GLB copied under %APPDATA%\Saeed\characters"
 $h=Wait-Until { $x=Get-WindowHandle;if($x -ne [IntPtr]::Zero){$x}else{$null}} 5000
 Assert $h "glb-runtime" "installed EXE remained alive after loading a real GLB"
 
