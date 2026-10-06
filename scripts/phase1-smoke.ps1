@@ -189,6 +189,26 @@ function Open-TrayMenu {
 
   return $false
 }
+function Click-TrayLeft {
+  $tray=Wait-Until {
+    $root=[System.Windows.Automation.AutomationElement]::RootElement
+    $name=New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::NameProperty,"Saeed")
+    $root.FindFirst([System.Windows.Automation.TreeScope]::Descendants,$name)
+  } 4000
+  if(!$tray){ return $false }
+  $pt=$null
+  try { $pt=$tray.GetClickablePoint() } catch {}
+  if($null -eq $pt){
+    try {
+      $rect=$tray.Current.BoundingRectangle
+      $pt=[pscustomobject]@{X=[int]($rect.X+($rect.Width/2));Y=[int]($rect.Y+($rect.Height/2))}
+    } catch { return $false }
+  }
+  [Win32Input]::SetCursorPos([int]$pt.X,[int]$pt.Y)|Out-Null
+  [Win32Input]::mouse_event([Win32Input]::LEFTDOWN,0,0,0,[UIntPtr]::Zero)
+  [Win32Input]::mouse_event([Win32Input]::LEFTUP,0,0,0,[UIntPtr]::Zero)
+  return $true
+}
 function Menu-Item([string]$name,[int]$timeout=3000) {
   Find-Element $name $timeout
 }
@@ -245,6 +265,19 @@ Start-Sleep -Seconds 3
 $afterSingle=@(Get-SaeedProcess).Count
 Assert ($afterSingle -eq 1) "single-instance" "second launch did not create a second Saeed process"
 Pass "second-launch-focus" "single-instance plugin handled second launch"
+
+# Tray left-click is part of the Phase 1 contract: it toggles character lifetime.
+if(Click-TrayLeft){
+  $leftHidden=Wait-Until { if((Get-WindowHandle)-eq [IntPtr]::Zero){$true}else{$null} } 10000
+  Assert $leftHidden "tray-left-click-hide" "left-click tray icon destroyed the character window"
+  if(Click-TrayLeft){
+    $leftShown=Wait-Until { $x=Get-WindowHandle;if($x -ne [IntPtr]::Zero){$x}else{$null} } 10000
+    Assert ($null -ne $leftShown) "tray-left-click-show" "left-click tray icon recreated the character window"
+  } else { Fail "tray-left-click-show" "tray icon could not be clicked for the second toggle" }
+} else {
+  Fail "tray-left-click-hide" "Saeed tray icon could not be clicked"
+  Fail "tray-left-click-show" "Saeed tray icon could not be clicked"
+}
 
 Open-TrayMenu
 $show=Menu-Item "Show Saeed";$hide=Menu-Item "Hide Saeed"
