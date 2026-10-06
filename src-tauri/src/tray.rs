@@ -72,9 +72,9 @@ pub fn install(app: &AppHandle) -> tauri::Result<()> {
             if let TrayIconEvent::Click { button: MouseButton::Left, button_state: MouseButtonState::Up, .. } = event {
                 let app = tray.app_handle();
                 if app.get_webview_window("character").is_some() {
-                    let _ = app::hide_character(app.clone());
+                    let _ = app::hide_character_core(app.clone());
                 } else {
-                    let _ = app::show_character(app);
+                    let _ = app::show_character_core(app);
                 }
             }
         })
