@@ -1,5 +1,3 @@
-use std::cell::RefCell;
-use std::rc::Rc;
 use std::sync::{
     Arc, Mutex,
     atomic::{AtomicBool, Ordering},
@@ -34,6 +32,26 @@ fn show_error_if_alive(weak: &slint::Weak<AppWindow>, message: &str) {
 fn show_error(window: &AppWindow, message: String) {
     window.set_conversation(format!("Saeed: {message}").into());
     window.set_status("Error".into());
+}
+
+fn schedule_character_action(
+    character: Arc<Mutex<CharacterRuntime>>,
+    weak: slint::Weak<AppWindow>,
+    delay: Duration,
+) {
+    slint::Timer::single_shot(delay, move || {
+        let Ok(mut runtime) = character.lock() else { return; };
+        if runtime.visibility() != CharacterVisibility::Visible || runtime.is_paused() {
+            return;
+        }
+        match runtime.render_next() {
+            Ok(Some(image)) => update_character_image(weak.clone(), image),
+            Ok(None) => {}
+            Err(error) => show_error_if_alive(&weak, &format!("Character runtime error: {error}")),
+        }
+        drop(runtime);
+        schedule_character_action(character, weak, Duration::from_millis(1200));
+    });
 }
 
 fn update_character_image(weak: slint::Weak<AppWindow>, pixels: slint::SharedPixelBuffer<slint::Rgba8Pixel>) {
@@ -105,35 +123,13 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
     }
-    // Real character behavior: Slint owns a lightweight event-loop timer.
-    // It advances one procedural action at a time; there is no render loop or worker thread.
-    let character_timer = Rc::new(RefCell::new(slint::Timer::default()));
-    {
-        // Single-shot scheduling: one action is rendered, then the next action is scheduled.
-        // This avoids a permanent high-frequency render loop.
-        let timer = Rc::clone(&character_timer);
-        let character = Arc::clone(&character);
-        let weak = window.as_weak();
-        let timer_weak = Rc::downgrade(&character_timer);
-        timer.borrow_mut().start(slint::TimerMode::SingleShot, Duration::from_secs(2), move || {
-            let Ok(mut runtime) = character.lock() else { return; };
-            if runtime.visibility() != CharacterVisibility::Visible || runtime.is_paused() {
-                return;
-            }
-            match runtime.render_next() {
-                Ok(Some(image)) => update_character_image(weak.clone(), image),
-                Ok(None) => {}
-                Err(error) => show_error_if_alive(&weak, &format!("Character runtime error: {error}")),
-            }
-            if let Some(timer) = timer_weak.upgrade() {
-                timer.borrow_mut().start(
-                    slint::TimerMode::SingleShot,
-                    Duration::from_millis(1200),
-                    move || {},
-                );
-            }
-        });
-    }
+    // Real character behavior is scheduled as one action at a time. No permanent timer or
+    // render loop is kept alive while the character is hidden or paused.
+    schedule_character_action(
+        Arc::clone(&character),
+        window.as_weak(),
+        Duration::from_secs(2),
+    );
 
     let voice_active = Arc::new(AtomicBool::new(false));
     let voice_worker_running = Arc::new(AtomicBool::new(false));
