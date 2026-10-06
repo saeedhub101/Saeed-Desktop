@@ -2,15 +2,17 @@ import { VerticalBox, HorizontalBox, LineEdit, Button } from "std-widgets.slint"
 
 export component AppWindow inherits Window {
     title: "Saeed";
-    preferred-width: 900px;
-    preferred-height: 620px;
-    min-width: 760px;
-    min-height: 500px;
+    preferred-width: 980px;
+    preferred-height: 700px;
+    min-width: 820px;
+    min-height: 560px;
 
     in-out property <string> status: "Ready";
     in-out property <string> conversation: "Saeed is ready. Chat and voice share one conversation.";
     in-out property <string> voice_button_text: "Mic ON";
     in-out property <bool> settings_open: false;
+    in-out property <bool> performance_open: false;
+    in-out property <string> performance_tab: "Status";
     in-out property <string> settings_api_key: "";
     in-out property <string> settings_ai_model: "gpt-6-luna";
     in-out property <string> settings_stt_model: "gpt-4o-mini-transcribe";
@@ -20,167 +22,188 @@ export component AppWindow inherits Window {
     in-out property <string> settings_status: "";
     in-out property <image> character_image;
     in-out property <string> character_button_text: "Hide Saeed";
+    in-out property <string> motion_button_text: "Pause Motion";
+    in-out property <string> character_state_text: "Idle";
+    in-out property <string> pose_yaw: "0";
+    in-out property <string> pose_pitch: "0";
+    in-out property <string> pose_roll: "0";
+    in-out property <string> pose_arm: "0";
 
     callback send-message(string);
     callback toggle-voice();
     callback save-settings(string, string, string, string, string);
     callback clear-api-key();
     callback toggle-character();
+    callback toggle-motion-pause();
+    callback set-character-state(string);
+    callback apply-pose(string, string, string, string);
+    callback save-rest-pose();
+    callback restore-rest-pose();
+    callback clear-conversation();
 
-    if !settings_open: VerticalBox {
-        padding: 28px;
-        spacing: 18px;
+    if !settings_open && !performance_open: VerticalBox {
+        padding: 24px;
+        spacing: 14px;
 
         HorizontalBox {
-            Text {
-                text: "Saeed";
-                font-size: 34px;
-                horizontal-stretch: 1;
-            }
-
-            Button {
-                text: character_button_text;
-                clicked => { root.toggle-character(); }
-            }
-
-            Button {
-                text: "Settings";
-                clicked => { root.settings_open = true; }
-            }
+            Text { text: "Saeed"; font-size: 34px; horizontal-stretch: 1; }
+            Button { text: "Performance"; clicked => { root.performance_open = true; } }
+            Button { text: character_button_text; clicked => { root.toggle-character(); } }
+            Button { text: "Settings"; clicked => { root.settings_open = true; } }
         }
 
-        Text {
-            text: "AI desktop companion";
-            font-size: 16px;
-            horizontal-alignment: center;
-        }
+        Text { text: "AI desktop companion • " + character_state_text; font-size: 15px; horizontal-alignment: center; }
 
         Image {
             source: character_image;
             horizontal-alignment: center;
             vertical-alignment: center;
-            width: 260px;
-            height: 260px;
+            width: 280px;
+            height: 280px;
+        }
+
+        HorizontalBox {
+            alignment: center;
+            spacing: 8px;
+            Button { text: motion_button_text; clicked => { root.toggle-motion-pause(); } }
+            Button { text: "Idle"; clicked => { root.set-character-state("Idle"); } }
+            Button { text: "Curious"; clicked => { root.set-character-state("Curious"); } }
+            Button { text: "Playful"; clicked => { root.set-character-state("Playful"); } }
+            Button { text: "Tired"; clicked => { root.set-character-state("Tired"); } }
+            Button { text: "Sleeping"; clicked => { root.set-character-state("Sleeping"); } }
+            Button { text: "Waking"; clicked => { root.set-character-state("Waking"); } }
         }
 
         Rectangle {
             border-width: 1px;
             border-radius: 12px;
             vertical-stretch: 1;
-
             VerticalBox {
-                padding: 20px;
-                spacing: 12px;
-
-                Text {
-                    text: conversation;
-                    wrap: word-wrap;
-                }
-
-                Rectangle {
-                    vertical-stretch: 1;
-                }
-
-                Text {
-                    text: status;
-                    font-size: 13px;
-                }
-
+                padding: 16px;
+                spacing: 10px;
+                Text { text: conversation; wrap: word-wrap; vertical-stretch: 1; }
+                Text { text: status; font-size: 13px; }
                 HorizontalBox {
                     spacing: 10px;
-
-                    message-input := LineEdit {
-                        placeholder-text: "Talk to Saeed...";
-                    }
-
+                    message-input := LineEdit { placeholder-text: "Talk to Saeed..."; }
                     Button {
                         text: "Send";
-                        clicked => {
-                            root.send-message(message-input.text);
-                            message-input.text = "";
-                        }
+                        clicked => { root.send-message(message-input.text); message-input.text = ""; }
                     }
-
-                    Button {
-                        text: voice_button_text;
-                        clicked => { root.toggle-voice(); }
-                    }
+                    Button { text: voice_button_text; clicked => { root.toggle-voice(); } }
                 }
             }
         }
     }
 
+    if performance_open: VerticalBox {
+        padding: 22px;
+        spacing: 12px;
+
+        HorizontalBox {
+            Text { text: "Performance & Character"; font-size: 28px; horizontal-stretch: 1; }
+            Button { text: "Back"; clicked => { root.performance_open = false; } }
+        }
+
+        HorizontalBox {
+            spacing: 6px;
+            Button { text: "API"; clicked => { root.performance_tab = "API"; } }
+            Button { text: "Voice"; clicked => { root.performance_tab = "Voice"; } }
+            Button { text: "Agent"; clicked => { root.performance_tab = "Agent"; } }
+            Button { text: "Permissions"; clicked => { root.performance_tab = "Permissions"; } }
+            Button { text: "Status"; clicked => { root.performance_tab = "Status"; } }
+            Button { text: "3D Status"; clicked => { root.performance_tab = "3D Status"; } }
+            Button { text: "Diagnostics"; clicked => { root.performance_tab = "Diagnostics"; } }
+            Button { text: "Pose / Motion"; clicked => { root.performance_tab = "Pose"; } }
+        }
+
+        if performance_tab == "Pose": VerticalBox {
+            spacing: 10px;
+            Text { text: "Live Pose Editor — applied directly to the character runtime"; font-size: 18px; }
+            HorizontalBox {
+                Text { text: "Yaw"; width: 90px; }
+                LineEdit { text: pose_yaw; edited => { root.pose_yaw = self.text; } }
+                Text { text: "Pitch"; width: 90px; }
+                LineEdit { text: pose_pitch; edited => { root.pose_pitch = self.text; } }
+            }
+            HorizontalBox {
+                Text { text: "Roll"; width: 90px; }
+                LineEdit { text: pose_roll; edited => { root.pose_roll = self.text; } }
+                Text { text: "Arm"; width: 90px; }
+                LineEdit { text: pose_arm; edited => { root.pose_arm = self.text; } }
+            }
+            HorizontalBox {
+                Button { text: "Apply Pose"; clicked => { root.apply-pose(pose_yaw, pose_pitch, pose_roll, pose_arm); } }
+                Button { text: "Save Normal Rest Pose"; clicked => { root.save-rest-pose(); } }
+                Button { text: "Restore Rest Pose"; clicked => { root.restore-rest-pose(); } }
+                Button { text: motion_button_text; clicked => { root.toggle-motion-pause(); } }
+            }
+            Text { text: "Pause is a single runtime control: when paused, automatic actions stop and the saved/manual pose remains active."; wrap: word-wrap; }
+        }
+
+        if performance_tab == "API": VerticalBox {
+            Text { text: "AI Provider"; font-size: 18px; }
+            Text { text: "Configured provider: " + settings_ai_model; }
+            Text { text: "API key: " + settings_api_key_status; wrap: word-wrap; }
+        }
+        if performance_tab == "Voice": VerticalBox {
+            Text { text: "Voice Pipeline"; font-size: 18px; }
+            Text { text: "Mic → STT → Core → AI → TTS → Playback"; }
+            Text { text: "STT: " + settings_stt_model; }
+            Text { text: "TTS: " + settings_tts_model + " • voice: " + settings_tts_voice; }
+        }
+        if performance_tab == "Agent": VerticalBox {
+            Text { text: "Agent / Tools"; font-size: 18px; }
+            Text { text: "Core owns lifecycle and shared conversation. Tools execute on demand only."; wrap: word-wrap; }
+        }
+        if performance_tab == "Permissions": VerticalBox {
+            Text { text: "Permissions"; font-size: 18px; }
+            Text { text: "Microphone is activated only when Mic is enabled. API key is stored in Windows Credential Manager."; wrap: word-wrap; }
+        }
+        if performance_tab == "Status": VerticalBox {
+            Text { text: "Runtime Status"; font-size: 18px; }
+            Text { text: status; wrap: word-wrap; }
+            Text { text: "Character state: " + character_state_text; }
+        }
+        if performance_tab == "3D Status": VerticalBox {
+            Text { text: "3D Character"; font-size: 18px; }
+            Image { source: character_image; width: 360px; height: 360px; horizontal-alignment: center; }
+            Text { text: "Visibility and renderer lifecycle are controlled by one CharacterRuntime owner."; wrap: word-wrap; }
+        }
+        if performance_tab == "Diagnostics": VerticalBox {
+            Text { text: "Diagnostics"; font-size: 18px; }
+            Text { text: "Build checks: cargo check • cargo test • release build • Windows startup smoke test"; wrap: word-wrap; }
+            Text { text: "Runtime diagnostics never block normal operation."; }
+            Button { text: "Clear Shared Conversation"; clicked => { root.clear-conversation(); } }
+        }
+
+        Rectangle { vertical-stretch: 1; }
+    }
+
     if settings_open: VerticalBox {
         padding: 28px;
         spacing: 14px;
-
         HorizontalBox {
-            Text {
-                text: "Settings";
-                font-size: 30px;
-                horizontal-stretch: 1;
-            }
-
-            Button {
-                text: "Back";
-                clicked => { root.settings_open = false; }
-            }
+            Text { text: "Settings"; font-size: 30px; horizontal-stretch: 1; }
+            Button { text: "Back"; clicked => { root.settings_open = false; } }
         }
-
-        Text { text: "OpenAI"; font-size: 18px; }
-
+        Text { text: "OpenAI / Providers"; font-size: 18px; }
         Text { text: "API key (stored in Windows Credential Manager)"; }
-        LineEdit {
-            input-type: password;
-            placeholder-text: "Enter API key to save or replace";
-            edited => { root.settings_api_key = self.text; }
-        }
-
-        Text {
-            text: settings_api_key_status;
-            font-size: 12px;
-        }
-
+        LineEdit { input-type: password; placeholder-text: "Enter API key to save or replace"; edited => { root.settings_api_key = self.text; } }
+        Text { text: settings_api_key_status; font-size: 12px; }
         Text { text: "AI model"; }
         LineEdit { text: settings_ai_model; edited => { root.settings_ai_model = self.text; } }
-
         Text { text: "Speech-to-text model"; }
         LineEdit { text: settings_stt_model; edited => { root.settings_stt_model = self.text; } }
-
         Text { text: "Text-to-speech model"; }
         LineEdit { text: settings_tts_model; edited => { root.settings_tts_model = self.text; } }
-
         Text { text: "TTS voice"; }
         LineEdit { text: settings_tts_voice; edited => { root.settings_tts_voice = self.text; } }
-
         HorizontalBox {
-            spacing: 10px;
-
-            Button {
-                text: "Save";
-                clicked => {
-                    root.save-settings(
-                        settings_api_key,
-                        settings_ai_model,
-                        settings_stt_model,
-                        settings_tts_model,
-                        settings_tts_voice
-                    );
-                }
-            }
-
-            Button {
-                text: "Remove API key";
-                clicked => { root.clear-api-key(); }
-            }
+            Button { text: "Save"; clicked => { root.save-settings(settings_api_key, settings_ai_model, settings_stt_model, settings_tts_model, settings_tts_voice); } }
+            Button { text: "Remove API key"; clicked => { root.clear-api-key(); } }
         }
-
-        Text {
-            text: settings_status;
-            wrap: word-wrap;
-            font-size: 12px;
-        }
-
+        Text { text: settings_status; wrap: word-wrap; font-size: 12px; }
         Rectangle { vertical-stretch: 1; }
     }
 }
