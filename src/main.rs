@@ -9,6 +9,7 @@ use std::time::Duration;
 
 use saeed_desktop::ai::OpenAiProvider;
 use saeed_desktop::core::SaeedCore;
+use saeed_desktop::storage::{AppSettings, Storage};
 use saeed_desktop::voice::{
     AudioPlayer, MicrophoneRecorder, OpenAiSpeechToText, OpenAiTextToSpeech, SpeechToText,
     TextToSpeech,
@@ -23,7 +24,7 @@ const VOICE_MINIMUM_SPEECH: Duration = Duration::from_millis(120);
 
 fn show_error(window: &AppWindow, message: String) {
     window.set_conversation(format!("Saeed: {message}").into());
-    window.set_status("Voice unavailable".into());
+    window.set_status("Error".into());
 }
 
 fn update_voice_ui(weak: &slint::Weak<AppWindow>, button: &str, status: &str) {
@@ -39,33 +40,159 @@ fn update_voice_ui(weak: &slint::Weak<AppWindow>, button: &str, status: &str) {
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let window = AppWindow::new()?;
+    let storage = Storage::open_default()?;
+    let settings = storage.load_settings()?;
+    let settings = Arc::new(Mutex::new(settings));
     let core = Arc::new(Mutex::new(SaeedCore::new()));
     let voice_active = Arc::new(AtomicBool::new(false));
     let voice_worker_running = Arc::new(AtomicBool::new(false));
 
     let weak = window.as_weak();
-    let core_for_chat = Arc::clone(&core);
 
-    window.on_send_message(move |text: SharedString| {
-        let text = text.trim();
-        if text.is_empty() {
-            return;
-        }
+    {
+        let settings = Arc::clone(&settings);
+        let weak = window.as_weak();
+        window.on_save_settings(move |api_key, ai_model, stt_model, tts_model, tts_voice| {
+            let mut next = {
+                let Ok(current) = settings.lock() else {
+                    update_voice_ui(&weak, "Mic ON", "Settings state is unavailable.");
+                    return;
+                };
+                current.clone()
+            };
 
-        let Some(window) = weak.upgrade() else {
-            return;
-        };
+            let key = api_key.trim();
+            if !key.is_empty() {
+                next.openai_api_key = Some(key.to_string());
+            }
+            next.ai_model = ai_model.trim().to_string();
+            next.stt_model = stt_model.trim().to_string();
+            next.tts_model = tts_model.trim().to_string();
+            next.tts_voice = tts_voice.trim().to_string();
 
-        let Ok(mut core) = core_for_chat.lock() else {
-            show_error(&window, "Core state is unavailable.".to_string());
-            return;
-        };
+            if next.ai_model.is_empty()
+                || next.stt_model.is_empty()
+                || next.tts_model.is_empty()
+                || next.tts_voice.is_empty()
+            {
+                if let Some(window) = weak.upgrade() {
+                    window.set_settings_status("All model/voice fields are required.".into());
+                }
+                return;
+            }
 
-        core.add_chat_message("user", text);
-        window.set_status("Thinking…".into());
+            if key.is_empty() && next.openai_api_key.is_none() {
+                if let Some(window) = weak.upgrade() {
+                    window.set_settings_status("Enter an OpenAI API key before saving.".into());
+                }
+                return;
+            }
 
-        match OpenAiProvider::from_environment() {
-            Ok(provider) => match core.complete_chat(&provider) {
+            let Ok(storage) = Storage::open_default() else {
+                if let Some(window) = weak.upgrade() {
+                    window.set_settings_status("Could not open local settings storage.".into());
+                }
+                return;
+            };
+
+            if let Err(error) = storage.save_settings(&next) {
+                if let Some(window) = weak.upgrade() {
+                    window.set_settings_status(format!("Save failed: {error}").into());
+                }
+                return;
+            }
+
+            if let Ok(mut current) = settings.lock() {
+                *current = next;
+            }
+
+            if let Some(window) = weak.upgrade() {
+                window.set_settings_status("Saved securely. API key is stored in Windows Credential Manager.".into());
+                window.set_settings_open(false);
+                window.set_status("Ready • Settings saved");
+            }
+        });
+    }
+
+    {
+        let settings = Arc::clone(&settings);
+        let weak = window.as_weak();
+        window.on_clear_api_key(move || {
+            let Ok(storage) = Storage::open_default() else {
+                if let Some(window) = weak.upgrade() {
+                    window.set_settings_status("Could not open local settings storage.".into());
+                }
+                return;
+            };
+
+            if let Err(error) = storage.clear_openai_api_key() {
+                if let Some(window) = weak.upgrade() {
+                    window.set_settings_status(format!("Could not clear API key: {error}").into());
+                }
+                return;
+            }
+
+            if let Ok(mut current) = settings.lock() {
+                current.openai_api_key = None;
+            }
+
+            if let Some(window) = weak.upgrade() {
+                window.set_settings_api_key_status("No API key saved".into());
+                window.set_settings_status("API key removed from Windows Credential Manager.".into());
+            }
+        });
+    }
+
+    {
+        let settings = Arc::clone(&settings);
+        let core = Arc::clone(&core);
+        let weak = window.as_weak();
+
+        window.on_send_message(move |text: SharedString| {
+            let text = text.trim().to_string();
+            if text.is_empty() {
+                return;
+            }
+
+            let settings = {
+                let Ok(settings) = settings.lock() else {
+                    if let Some(window) = weak.upgrade() {
+                        show_error(&window, "Settings state is unavailable.".to_string());
+                    }
+                    return;
+                };
+                settings.clone()
+            };
+
+            let Some(api_key) = settings.openai_api_key.clone() else {
+                if let Some(window) = weak.upgrade() {
+                    window.set_settings_open(true);
+                    show_error(&window, "Add your OpenAI API key in Settings first.".to_string());
+                }
+                return;
+            };
+
+            let Some(window) = weak.upgrade() else {
+                return;
+            };
+
+            let Ok(mut core) = core.lock() else {
+                show_error(&window, "Core state is unavailable.".to_string());
+                return;
+            };
+
+            core.add_chat_message("user", &text);
+            window.set_status("Thinking…".into());
+
+            let provider = match OpenAiProvider::from_config(api_key, settings.ai_model) {
+                Ok(provider) => provider,
+                Err(error) => {
+                    show_error(&window, error);
+                    return;
+                }
+            };
+
+            match core.complete_chat(&provider) {
                 Ok(response) => {
                     window.set_conversation(
                         format!("You: {text}\n\nSaeed: {}", response.text).into(),
@@ -73,16 +200,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     window.set_status("Ready • Shared conversation".into());
                 }
                 Err(error) => show_error(&window, error),
-            },
-            Err(error) => show_error(&window, error),
-        }
-    });
+            }
+        });
+    }
 
     {
         let active = Arc::clone(&voice_active);
         let worker_running = Arc::clone(&voice_worker_running);
         let core = Arc::clone(&core);
-        let weak = window.as_weak();
+        let settings = Arc::clone(&settings);
+        let weak = weak.clone();
 
         window.on_toggle_voice(move || {
             if active.load(Ordering::Acquire) {
@@ -103,6 +230,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let active = Arc::clone(&active);
             let worker_running = Arc::clone(&worker_running);
             let core = Arc::clone(&core);
+            let settings = Arc::clone(&settings);
             let weak = weak.clone();
 
             thread::spawn(move || {
@@ -138,7 +266,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                     update_voice_ui(&weak, "Mic OFF", "Transcribing…");
 
-                    match process_voice_turn(&core, &audio) {
+                    match process_voice_turn(&core, &settings, &audio) {
                         Ok((transcript, response)) => {
                             let transcript_for_ui = transcript.clone();
                             let response_for_ui = response.clone();
@@ -154,7 +282,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 }
                             });
 
-                            if let Err(error) = speak_response(&response) {
+                            if let Err(error) = speak_response(&settings, &response) {
                                 update_voice_ui(&weak, "Mic ON", &format!("TTS unavailable: {error}"));
                                 active.store(false, Ordering::Release);
                                 break;
@@ -189,9 +317,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 fn process_voice_turn(
     core: &Arc<Mutex<SaeedCore>>,
+    settings: &Arc<Mutex<AppSettings>>,
     audio: &[u8],
 ) -> Result<(String, String), String> {
-    let stt = OpenAiSpeechToText::from_environment()?;
+    let settings = settings
+        .lock()
+        .map_err(|_| "Settings state is unavailable.".to_string())?
+        .clone();
+
+    let api_key = settings
+        .openai_api_key
+        .ok_or_else(|| "Add your OpenAI API key in Settings first.".to_string())?;
+
+    let stt = OpenAiSpeechToText::from_config(api_key.clone(), settings.stt_model)?;
     let transcript = stt.transcribe(audio)?;
 
     let response = {
@@ -201,15 +339,31 @@ fn process_voice_turn(
 
         core.add_voice_message("user", &transcript);
 
-        let ai = OpenAiProvider::from_environment()?;
+        let ai = OpenAiProvider::from_config(api_key, settings.ai_model)?;
         core.complete_voice(&ai)?.text
     };
 
     Ok((transcript, response))
 }
 
-fn speak_response(response: &str) -> Result<(), String> {
-    let tts = OpenAiTextToSpeech::from_environment()?;
+fn speak_response(
+    settings: &Arc<Mutex<AppSettings>>,
+    response: &str,
+) -> Result<(), String> {
+    let settings = settings
+        .lock()
+        .map_err(|_| "Settings state is unavailable.".to_string())?
+        .clone();
+
+    let api_key = settings
+        .openai_api_key
+        .ok_or_else(|| "Add your OpenAI API key in Settings first.".to_string())?;
+
+    let tts = OpenAiTextToSpeech::from_config(
+        api_key,
+        settings.tts_model,
+        settings.tts_voice,
+    )?;
     let spoken_audio = tts.synthesize(response)?;
     AudioPlayer::play(&spoken_audio)
 }
