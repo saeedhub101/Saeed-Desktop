@@ -192,19 +192,15 @@ impl Mat4 {
     }
 
     fn from_gltf(transform: gltf::scene::Transform) -> Self {
-        match transform {
-            gltf::scene::Transform::Matrix { matrix } => Self(matrix),
-            gltf::scene::Transform::Decomposed { translation, rotation, scale } => {
-                let [x, y, z, w] = rotation;
-                let [sx, sy, sz] = scale;
-                Self([
-                    [(1.0 - 2.0 * (y * y + z * z)) * sx, (2.0 * (x * y - z * w)) * sy, (2.0 * (x * z + y * w)) * sz, translation[0]],
-                    [(2.0 * (x * y + z * w)) * sx, (1.0 - 2.0 * (x * x + z * z)) * sy, (2.0 * (y * z - x * w)) * sz, translation[1]],
-                    [(2.0 * (x * z - y * w)) * sx, (2.0 * (y * z + x * w)) * sy, (1.0 - 2.0 * (x * x + y * y)) * sz, translation[2]],
-                    [0.0, 0.0, 0.0, 1.0],
-                ])
+        let matrix = transform.matrix();
+        let mut out = [[0.0; 4]; 4];
+        // glTF exposes matrices in column-major form; the rasterizer uses row-major.
+        for column in 0..4 {
+            for row in 0..4 {
+                out[row][column] = matrix[column][row];
             }
         }
+        Self(out)
     }
 }
 
