@@ -80,7 +80,7 @@ pub fn run() {
             tray::install(app.handle())?;
 
             if settings.character.visible {
-                windows_mgr::create_character_window(app.handle())?;
+                let _ = windows_mgr::create_character_window(app.handle());
             }
 
             Ok(())
