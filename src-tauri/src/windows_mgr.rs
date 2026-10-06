@@ -95,7 +95,7 @@ pub fn create_character_window(app: &AppHandle) -> Result<(), String> {
 
         saved.character.position = position;
 
-        let dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+        let dir = crate::app::data_dir(app)?;
         saved.save(&dir)?;
     }
 
