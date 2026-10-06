@@ -192,7 +192,6 @@ fn log_rect_when_ready(app: AppHandle) {
         }
     });
 }
-}
 
 fn choose(app: AppHandle) {
     let _ = thread::spawn(move || {
