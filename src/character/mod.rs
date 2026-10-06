@@ -51,13 +51,16 @@ impl CharacterRuntime {
     pub fn set_state(&mut self, state: CharacterState) { self.state = state; }
 
     pub fn set_visibility(&mut self, visibility: CharacterVisibility) -> Result<(), String> {
-        self.visibility = visibility;
         if visibility == CharacterVisibility::Hidden {
+            self.visibility = CharacterVisibility::Hidden;
             self.state = CharacterState::Idle;
             self.renderer = None;
             return Ok(());
         }
-        self.ensure_renderer()
+
+        self.ensure_renderer()?;
+        self.visibility = CharacterVisibility::Visible;
+        Ok(())
     }
 
     fn ensure_renderer(&mut self) -> Result<(), String> {
