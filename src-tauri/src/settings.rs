@@ -15,15 +15,8 @@ pub struct AppSettings {
 pub struct CharacterSettings {
     pub visible: bool,
     pub scale: CharacterScale,
-    pub position: Position,
     pub always_on_top: bool,
     pub current_id: String,
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-pub struct Position {
-    pub x: i32,
-    pub y: i32,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
@@ -47,7 +40,6 @@ impl Default for AppSettings {
             character: CharacterSettings {
                 visible: true,
                 scale: CharacterScale::Medium,
-                position: Position { x: -1, y: -1 },
                 always_on_top: true,
                 current_id: "default".into(),
             },
