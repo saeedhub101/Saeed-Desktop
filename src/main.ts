@@ -169,16 +169,11 @@ async function init(): Promise<void> {
       const x = event.clientX - rect.left;
       const y = event.clientY - rect.top;
 
-      if (
-        scene?.hitTest(
-          x,
-          y,
-          rect.width,
-          rect.height,
-        )
-      ) {
-        void windowHandle.startDragging();
-      }
+      // Cursor pass-through is controlled by the native hit-test state. If a
+      // pointer reaches the canvas it is therefore a real character hit, so
+      // startDragging must not repeat the renderer alpha test here (which can
+      // be one frame behind the visible model).
+      void windowHandle.startDragging();
     },
   );
 
@@ -207,8 +202,9 @@ async function init(): Promise<void> {
       resizeScene(size);
       return scene?.load().catch((error) => {
         console.error(error);
+        const detail = error instanceof Error ? error.message : String(error);
         void invoke("log_error", {
-          message: String(error),
+          message: detail.includes("GLB load failed") ? detail : `GLB load failed: ${detail}`,
         });
         message(
           "Saeed could not load the character model.",
