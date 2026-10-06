@@ -37,7 +37,6 @@ struct Triangle {
 
 #[derive(Debug, Clone)]
 struct Joint {
-    node_index: usize,
     name: String,
     inverse_bind: Mat4,
     base_world: Mat4,
