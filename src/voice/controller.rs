@@ -10,7 +10,10 @@ use crate::ai::OpenAiProvider;
 use crate::core::SaeedCore;
 use crate::storage::AppSettings;
 
-use super::{AudioPlayer, OpenAiSpeechToText, OpenAiTextToSpeech, SpeechToText, TextToSpeech};
+use super::{
+    AudioPlayer, LocalCommandSpeechToText, LocalCommandTextToSpeech,
+    OpenAiSpeechToText, OpenAiTextToSpeech, SpeechToText, TextToSpeech,
+};
 
 #[derive(Debug, Clone)]
 pub struct VoiceTurnResult {
@@ -31,12 +34,15 @@ impl VoiceController {
             .map_err(|_| "Settings state is unavailable.".to_string())?
             .clone();
 
-        let api_key = settings
-            .openai_api_key
-            .ok_or_else(|| "Add your OpenAI API key in Settings first.".to_string())?;
-
-        let stt = OpenAiSpeechToText::from_config(api_key.clone(), settings.stt_model)?;
-        let transcript = stt.transcribe(audio)?;
+        let transcript = if settings.stt_model.trim().eq_ignore_ascii_case("local") {
+            let stt = LocalCommandSpeechToText::from_environment()?;
+            stt.transcribe(audio)?
+        } else {
+            let api_key = settings.openai_api_key.clone()
+                .ok_or_else(|| "OpenAI STT selected: add your OpenAI API key in Settings.".to_string())?;
+            let stt = OpenAiSpeechToText::from_config(api_key, settings.stt_model)?;
+            stt.transcribe(audio)?
+        };
 
         let response = {
             let mut core = core
@@ -45,14 +51,13 @@ impl VoiceController {
 
             core.add_voice_message("user", &transcript);
 
+            let api_key = settings.openai_api_key.clone()
+                .ok_or_else(|| "AI currently requires an OpenAI API key.".to_string())?;
             let ai = OpenAiProvider::from_config(api_key, settings.ai_model)?;
             core.complete_voice(&ai)?.text
         };
 
-        Ok(VoiceTurnResult {
-            transcript,
-            response,
-        })
+        Ok(VoiceTurnResult { transcript, response })
     }
 
     pub fn speak(
@@ -64,17 +69,16 @@ impl VoiceController {
             .map_err(|_| "Settings state is unavailable.".to_string())?
             .clone();
 
-        let api_key = settings
-            .openai_api_key
-            .ok_or_else(|| "Add your OpenAI API key in Settings first.".to_string())?;
+        let spoken_audio = if settings.tts_model.trim().eq_ignore_ascii_case("local") {
+            let tts = LocalCommandTextToSpeech::from_environment()?;
+            tts.synthesize(response)?
+        } else {
+            let api_key = settings.openai_api_key
+                .ok_or_else(|| "OpenAI TTS selected: add your OpenAI API key in Settings.".to_string())?;
+            let tts = OpenAiTextToSpeech::from_config(api_key, settings.tts_model, settings.tts_voice)?;
+            tts.synthesize(response)?
+        };
 
-        let tts = OpenAiTextToSpeech::from_config(
-            api_key,
-            settings.tts_model,
-            settings.tts_voice,
-        )?;
-
-        let spoken_audio = tts.synthesize(response)?;
         AudioPlayer::play(&spoken_audio)
     }
 }
