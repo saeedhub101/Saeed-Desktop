@@ -128,7 +128,23 @@ function Open-TrayMenu {
   }
 
   if(!$tray){ throw "Saeed tray icon was not exposed through Windows UI Automation (including notification-area and overflow paths)" }
-  try { $pt=$tray.GetClickablePoint() } catch { throw "Saeed tray UIA element has no clickable point" }
+
+  # Notification-area elements on Windows 11 frequently expose a valid
+  # bounding rectangle but intentionally do not implement GetClickablePoint().
+  # Use the UIA rectangle as the deterministic fallback instead of declaring
+  # the tray feature broken.
+  $pt=$null
+  try { $pt=$tray.GetClickablePoint() } catch {}
+  if($null -eq $pt){
+    $rect=$tray.Current.BoundingRectangle
+    if($rect.Width -le 0 -or $rect.Height -le 0){
+      throw "Saeed tray UIA element has neither a clickable point nor a usable bounding rectangle"
+    }
+    $pt=[System.Drawing.Point]::new(
+      [int]($rect.X + ($rect.Width / 2)),
+      [int]($rect.Y + ($rect.Height / 2))
+    )
+  }
   [Win32Input]::SetCursorPos([int]$pt.X,[int]$pt.Y)|Out-Null
   [Win32Input]::mouse_event([Win32Input]::RIGHTDOWN,0,0,0,[UIntPtr]::Zero)
   [Win32Input]::mouse_event([Win32Input]::RIGHTUP,0,0,0,[UIntPtr]::Zero)
