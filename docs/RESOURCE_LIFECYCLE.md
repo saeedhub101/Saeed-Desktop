@@ -7,15 +7,15 @@
 | User state | Running | Destroyed |
 |---|---|---|
 | Everything closed, character hidden, mic OFF | Core + tray only | Character window, Renderer, Chat, Brain, Voice, TTS, STT, plugins |
-| Character visible, chat closed, mic OFF | Core, Character window | Brain, STT, TTS (until a reply needs speech) |
+| Character visible, chat closed, mic OFF | Core, Character window | Brain, Voice, STT, TTS |
 | Chat open | Core, Character, Chat, Brain (while active) | STT (if mic OFF) |
-| Mic ON | Core, Voice capture + VAD, STT, Brain on demand | none of the above |
+| Mic ON | Core, Character, Voice capture + VAD, STT, Brain on demand | none of the above |
 | Muted | everything as above | TTS pipeline |
-| Character hidden | Core, others as needed | Character window and Three.js renderer |
+| Character hidden, Chat open | Core, Chat, Brain while active | Character window, Three.js, renderer, Mic, VAD, STT, TTS |\n| Character hidden, Chat closed | Core + tray only | Character, Three.js, renderer, Mic, VAD, STT, TTS, Brain, Chat |
 
 ## Mechanics
 
-- **Service Manager** owns lifecycle: `start`, `stop`, reference counting, and idle timers.
+- **Core/Tray** owns application lifecycle. No window is the application owner. It creates/destroys feature resources and is the only permanent runtime.\n- **Character** owns only character resources and character-local animation/input. Destroying Character destroys its renderer, GLB, and voice resources tied to its presence.\n- A future Service Manager may implement resource helpers, but it must not become a second lifecycle owner.
 - **Brain** is created on first message, destroyed after an idle timeout (default 2 minutes).
 - **STT / VAD** exist only while the mic is ON.
 - **TTS** is created on demand for a spoken reply, destroyed after idle (default 30 s) and while muted.
