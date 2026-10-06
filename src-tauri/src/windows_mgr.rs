@@ -36,7 +36,7 @@ fn default_position(app: &AppHandle, width: u32) -> Position {
         if let Some(monitor) = monitors.first() {
             let work_area = monitor.work_area();
 
-            return clamp_position(
+            return clamp_to_work_area(
                 Position {
                     x: work_area.position.x
                         + ((work_area.size.width.saturating_sub(width)) / 2) as i32,
