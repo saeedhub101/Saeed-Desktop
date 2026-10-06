@@ -1,6 +1,6 @@
 use std::{sync::mpsc, thread, time::Duration};
 
-use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
+use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, WebviewUrl, WebviewWindowBuilder};
 
 use crate::app::AppState;
 use crate::settings::{CharacterScale, Position};
@@ -122,15 +122,12 @@ pub fn create_character_window(app: &AppHandle) -> Result<(), String> {
         .unwrap_or(1.0);
 
     let logical_width = f64::from(width) / scale_factor;
-    let logical_x = f64::from(position.x) / scale_factor;
-    let logical_y = f64::from(position.y) / scale_factor;
 
     let icon = tauri::include_image!("./icons/32x32.png");
 
     let window = WebviewWindowBuilder::new(app, "character", WebviewUrl::App("index.html".into()))
     .title("Saeed")
     .inner_size(logical_width, logical_width)
-    .position(logical_x, logical_y)
     .transparent(true)
     .decorations(false)
     .shadow(false)
@@ -144,6 +141,9 @@ pub fn create_character_window(app: &AppHandle) -> Result<(), String> {
     .build()
     .map_err(|e| e.to_string())?;
 
+    window
+        .set_position(PhysicalPosition::new(position.x, position.y))
+        .map_err(|e| e.to_string())?;
     window
         .set_ignore_cursor_events(false)
         .map_err(|e| e.to_string())?;
@@ -181,6 +181,9 @@ pub fn destroy_character_window(app: &AppHandle) -> Result<(), String> {
     let state = app.try_state::<AppState>();
 
     if let Some(state) = &state {
+        state
+            .destroying_character
+            .store(true, std::sync::atomic::Ordering::SeqCst);
         let (sender, receiver) = mpsc::channel();
 
         if let Ok(mut slot) = state.cleanup_ack.lock() {
@@ -204,7 +207,15 @@ pub fn destroy_character_window(app: &AppHandle) -> Result<(), String> {
         }
     }
 
-    window.destroy().map_err(|e| e.to_string())?;
+    let destroy_result = window.destroy().map_err(|e| e.to_string());
+
+    if let Some(state) = &state {
+        state
+            .destroying_character
+            .store(false, std::sync::atomic::Ordering::SeqCst);
+    }
+
+    destroy_result?;
 
     if let Some(state) = &state {
         state.logger.info("Character window destroyed");
