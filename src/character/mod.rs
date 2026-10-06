@@ -27,6 +27,7 @@ pub struct CharacterRuntime {
     visibility: CharacterVisibility,
     state: CharacterState,
     action_index: u32,
+    last_action_slot: Option<usize>,
     asset_path: Option<std::path::PathBuf>,
     renderer: Option<GlbCharacterRenderer>,
     width: u32,
@@ -42,6 +43,7 @@ impl CharacterRuntime {
             visibility: CharacterVisibility::Hidden,
             state: CharacterState::Idle,
             action_index: 0,
+            last_action_slot: None,
             asset_path: asset::find_default_asset(),
             renderer: None,
             width: width.max(64),
@@ -107,7 +109,11 @@ impl CharacterRuntime {
         let mut x = self.action_index.wrapping_mul(747796405).wrapping_add(2891336453);
         x ^= x >> 16;
         x = x.wrapping_mul(2246822519);
-        let slot = ((x ^ (x >> 13)) % 4) as usize;
+        let mut slot = ((x ^ (x >> 13)) % 4) as usize;
+        if self.last_action_slot == Some(slot) {
+            slot = (slot + 1) % 4;
+        }
+        self.last_action_slot = Some(slot);
         let intent = match self.state {
             CharacterState::Idle => [
                 MotionIntent { yaw: -0.10, pitch: 0.02, roll: 0.0, arm_wave: 0.0, duration_ms: 900 },
