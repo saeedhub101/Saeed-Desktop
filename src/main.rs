@@ -11,8 +11,7 @@ use saeed_desktop::ai::OpenAiProvider;
 use saeed_desktop::core::SaeedCore;
 use saeed_desktop::storage::{AppSettings, Storage};
 use saeed_desktop::voice::{
-    AudioPlayer, MicrophoneRecorder, OpenAiSpeechToText, OpenAiTextToSpeech, SpeechToText,
-    TextToSpeech,
+    AudioPlayer, MicrophoneRecorder, VoiceController,
 };
 use slint::SharedString;
 
@@ -278,8 +277,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                     update_voice_ui(&weak, "Mic OFF", "Transcribing…");
 
-                    match process_voice_turn(&core, &settings, &audio) {
-                        Ok((transcript, response)) => {
+                    match VoiceController::process_turn(&core, &settings, &audio) {
+                        Ok(result) => {
+                            let transcript = result.transcript;
+                            let response = result.response;
                             let transcript_for_ui = transcript.clone();
                             let response_for_ui = response.clone();
                             let weak_for_ui = weak.clone();
@@ -295,7 +296,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 }
                             });
 
-                            if let Err(error) = speak_response(&settings, &response) {
+                            if let Err(error) = VoiceController::speak(&settings, &response) {
                                 update_voice_ui(&weak, "Mic ON", &format!("TTS unavailable: {error}"));
                                 active.store(false, Ordering::Release);
                                 break;
@@ -328,55 +329,3 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-fn process_voice_turn(
-    core: &Arc<Mutex<SaeedCore>>,
-    settings: &Arc<Mutex<AppSettings>>,
-    audio: &[u8],
-) -> Result<(String, String), String> {
-    let settings = settings
-        .lock()
-        .map_err(|_| "Settings state is unavailable.".to_string())?
-        .clone();
-
-    let api_key = settings
-        .openai_api_key
-        .ok_or_else(|| "Add your OpenAI API key in Settings first.".to_string())?;
-
-    let stt = OpenAiSpeechToText::from_config(api_key.clone(), settings.stt_model)?;
-    let transcript = stt.transcribe(audio)?;
-
-    let response = {
-        let mut core = core
-            .lock()
-            .map_err(|_| "Core state is unavailable.".to_string())?;
-
-        core.add_voice_message("user", &transcript);
-
-        let ai = OpenAiProvider::from_config(api_key, settings.ai_model)?;
-        core.complete_voice(&ai)?.text
-    };
-
-    Ok((transcript, response))
-}
-
-fn speak_response(
-    settings: &Arc<Mutex<AppSettings>>,
-    response: &str,
-) -> Result<(), String> {
-    let settings = settings
-        .lock()
-        .map_err(|_| "Settings state is unavailable.".to_string())?
-        .clone();
-
-    let api_key = settings
-        .openai_api_key
-        .ok_or_else(|| "Add your OpenAI API key in Settings first.".to_string())?;
-
-    let tts = OpenAiTextToSpeech::from_config(
-        api_key,
-        settings.tts_model,
-        settings.tts_voice,
-    )?;
-    let spoken_audio = tts.synthesize(response)?;
-    AudioPlayer::play(&spoken_audio)
-}
