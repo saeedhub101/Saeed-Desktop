@@ -1,6 +1,5 @@
 use tauri::{
     image::Image,
-    runtime::dpi::{PhysicalPosition, PhysicalSize},
     AppHandle,
     Manager,
     WebviewUrl,
@@ -58,6 +57,17 @@ pub fn create_character_window(app: &AppHandle) -> Result<(), String> {
         default_position(app, width)
     };
 
+    let scale_factor = app
+        .monitor_from_point(position.x as f64, position.y as f64)?
+        .map(|monitor| monitor.scale_factor())
+        .transpose()
+        .map_err(|e| e.to_string())?
+        .unwrap_or(1.0);
+
+    let logical_width = f64::from(width) / scale_factor;
+    let logical_x = f64::from(position.x) / scale_factor;
+    let logical_y = f64::from(position.y) / scale_factor;
+
     let icon = Image::from_app_icon_resource(32).map_err(|e| e.to_string())?;
 
     let window = WebviewWindowBuilder::new(
@@ -66,8 +76,8 @@ pub fn create_character_window(app: &AppHandle) -> Result<(), String> {
         WebviewUrl::App("index.html".into()),
     )
     .title("Saeed")
-    .inner_size(PhysicalSize::new(width, width))
-    .position(PhysicalPosition::new(position.x, position.y))
+    .inner_size(logical_width, logical_width)
+    .position(logical_x, logical_y)
     .transparent(true)
     .decorations(false)
     .shadow(false)
