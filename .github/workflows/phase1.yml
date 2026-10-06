@@ -74,13 +74,14 @@ jobs:
           if ($config.bundle.windows.webviewInstallMode.type -ne "embedBootstrapper") { throw "WebView2 bootstrapper is not embedded" }
           $installer = Get-ChildItem "src-tauri/target/release/bundle/nsis/*.exe" -File | Sort-Object LastWriteTime -Descending | Select-Object -First 1
           if (-not $installer) { throw "No NSIS installer was produced" }
-          "INSTALLER=$($installer.FullName)" | Out-File "$env:RUNNER_TEMP\installer.txt" -Encoding utf8
+          $installer.FullName | Out-File "$env:RUNNER_TEMP\installer.txt" -Encoding utf8
           Write-Host "Installer: $($installer.FullName)"
 
       - name: Run complete Phase 1 installed-EXE smoke
         shell: pwsh
         run: |
           $installer = (Get-Content "$env:RUNNER_TEMP\installer.txt" -Raw).Trim()
+          if (!(Test-Path -LiteralPath $installer)) { throw "Installer not found: $installer" }
           powershell -NoProfile -ExecutionPolicy Bypass -File scripts/phase1-smoke.ps1 -Installer $installer
 
       - name: Collect Phase 1 evidence
