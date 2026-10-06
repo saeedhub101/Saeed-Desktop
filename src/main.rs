@@ -7,7 +7,7 @@ use std::sync::{
 use std::thread;
 use std::time::Duration;
 
-use saeed_desktop::ai::OpenAiProvider;
+use saeed_desktop::ai::{AiProvider, LocalCommandAiProvider, OpenAiProvider};
 use saeed_desktop::core::SaeedCore;
 use saeed_desktop::storage::{AppSettings, Storage};
 use saeed_desktop::voice::{MicrophoneRecorder, VoiceController};
@@ -164,14 +164,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 settings.clone()
             };
 
-            let Some(api_key) = settings.openai_api_key.clone() else {
-                if let Some(window) = weak.upgrade() {
-                    window.set_settings_open(true);
-                    show_error(&window, "Add your OpenAI API key in Settings first.".to_string());
-                }
-                return;
-            };
-
             let Some(window) = weak.upgrade() else {
                 return;
             };
@@ -184,15 +176,32 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             core.add_chat_message("user", &text);
             window.set_status("Thinking…".into());
 
-            let provider = match OpenAiProvider::from_config(api_key, settings.ai_model) {
-                Ok(provider) => provider,
-                Err(error) => {
-                    show_error(&window, error);
+            let result = if settings.ai_model.trim().eq_ignore_ascii_case("local") {
+                let provider = match LocalCommandAiProvider::from_environment() {
+                    Ok(provider) => provider,
+                    Err(error) => {
+                        show_error(&window, error);
+                        return;
+                    }
+                };
+                core.complete_chat(&provider)
+            } else {
+                let Some(api_key) = settings.openai_api_key.clone() else {
+                    window.set_settings_open(true);
+                    show_error(&window, "Add your OpenAI API key in Settings first.".to_string());
                     return;
-                }
+                };
+                let provider = match OpenAiProvider::from_config(api_key, settings.ai_model) {
+                    Ok(provider) => provider,
+                    Err(error) => {
+                        show_error(&window, error);
+                        return;
+                    }
+                };
+                core.complete_chat(&provider)
             };
 
-            match core.complete_chat(&provider) {
+            match result {
                 Ok(response) => {
                     window.set_conversation(
                         format!("You: {text}\n\nSaeed: {}", response.text).into(),
