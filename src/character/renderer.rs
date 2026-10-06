@@ -74,6 +74,7 @@ pub struct GlbCharacterRenderer {
     scale: f32,
     pub rigged: bool,
     pub bone_names: Vec<String>,
+    procedural_fallback: bool,
 }
 
 impl GlbCharacterRenderer {
@@ -122,7 +123,25 @@ impl GlbCharacterRenderer {
         for p in &palettes { for j in &p.joints { if !j.name.is_empty() && !bone_names.contains(&j.name) { bone_names.push(j.name.clone()); } } }
         let rigged=!palettes.is_empty() && triangles.iter().any(|t|t.skin.is_some());
 
-        Ok(Self{triangles,palettes,width:width.max(64),height:height.max(64),center,scale,rigged,bone_names})
+        Ok(Self{triangles,palettes,width:width.max(64),height:height.max(64),center,scale,rigged,bone_names,procedural_fallback:false})
+    }
+
+    /// Built-in humanoid fallback used when no external GLB is available. It keeps
+    /// the application fully usable while preserving the same renderer boundary.
+    pub fn procedural(width: u32, height: u32) -> Self {
+        let mut triangles = Vec::new();
+        cube(&mut triangles, Vec3{x:0.0,y:0.25,z:0.0}, Vec3{x:0.55,y:0.85,z:0.30}, [92,145,220,255]);
+        cube(&mut triangles, Vec3{x:0.0,y:0.95,z:0.0}, Vec3{x:0.38,y:0.38,z:0.38}, [225,185,145,255]);
+        cube(&mut triangles, Vec3{x:-0.48,y:0.25,z:0.0}, Vec3{x:0.18,y:0.65,z:0.18}, [92,145,220,255]);
+        cube(&mut triangles, Vec3{x:0.48,y:0.25,z:0.0}, Vec3{x:0.18,y:0.65,z:0.18}, [92,145,220,255]);
+        cube(&mut triangles, Vec3{x:-0.18,y:-0.48,z:0.0}, Vec3{x:0.20,y:0.70,z:0.22}, [65,80,110,255]);
+        cube(&mut triangles, Vec3{x:0.18,y:-0.48,z:0.0}, Vec3{x:0.20,y:0.70,z:0.22}, [65,80,110,255]);
+        let min=Vec3{x:-0.65,y:-0.83,z:-0.22};
+        let max=Vec3{x:0.65,y:1.15,z:0.22};
+        let center=min.add(max).mul(0.5);
+        let e=max.sub(min);
+        let scale=2.0/e.x.max(e.y).max(e.z).max(0.001);
+        Self{triangles,palettes:Vec::new(),width:width.max(64),height:height.max(64),center,scale,rigged:false,bone_names:Vec::new(),procedural_fallback:true}
     }
 
     pub fn render(&self,motion:MotionIntent)->SharedPixelBuffer<Rgba8Pixel>{
@@ -134,7 +153,8 @@ impl GlbCharacterRenderer {
         for t in &self.triangles {
             let mut pts=[Vec3::default();3];
             for (i,v) in t.vertices.iter().enumerate() {
-                let p=if let Some(si)=t.skin { skin_vertex(v,&self.palettes[si],motion) } else { v.position };
+                let mut p=if let Some(si)=t.skin { skin_vertex(v,&self.palettes[si],motion) } else { v.position };
+                if self.procedural_fallback { p=procedural_pose(p,motion); }
                 pts[i]=root.apply(p.sub(self.center).mul(self.scale));
             }
             let normal=pts[1].sub(pts[0]).cross(pts[2].sub(pts[0])).normalize();
@@ -149,6 +169,32 @@ impl GlbCharacterRenderer {
         }
         pixels
     }
+}
+
+
+fn cube(triangles:&mut Vec<Triangle>, center:Vec3, size:Vec3, color:[u8;4]){
+    let h=size.mul(0.5);
+    let p=[
+        Vec3{x:center.x-h.x,y:center.y-h.y,z:center.z-h.z}, Vec3{x:center.x+h.x,y:center.y-h.y,z:center.z-h.z},
+        Vec3{x:center.x+h.x,y:center.y+h.y,z:center.z-h.z}, Vec3{x:center.x-h.x,y:center.y+h.y,z:center.z-h.z},
+        Vec3{x:center.x-h.x,y:center.y-h.y,z:center.z+h.z}, Vec3{x:center.x+h.x,y:center.y-h.y,z:center.z+h.z},
+        Vec3{x:center.x+h.x,y:center.y+h.y,z:center.z+h.z}, Vec3{x:center.x-h.x,y:center.y+h.y,z:center.z+h.z}
+    ];
+    let faces=[[0,1,2],[0,2,3],[1,5,6],[1,6,2],[5,4,7],[5,7,6],[4,0,3],[4,3,7],[3,2,6],[3,6,7],[4,5,1],[4,1,0]];
+    for f in faces { let v=|i| Vertex{position:p[i],joints:[0;4],weights:[1.0,0.0,0.0,0.0]}; triangles.push(Triangle{vertices:[v(f[0]),v(f[1]),v(f[2])],color,skin:None}); }
+}
+
+fn procedural_pose(mut p:Vec3,motion:MotionIntent)->Vec3{
+    let arm=motion.arm_wave;
+    if p.x.abs()>0.32 && p.y>0.0 {
+        let side=if p.x>0.0 {1.0}else{-1.0};
+        let pivot=Vec3{x:side*0.30,y:0.52,z:0.0};
+        let a=arm*side;
+        let (s,c)=a.sin_cos();
+        let x=p.x-pivot.x; let y=p.y-pivot.y;
+        p.x=pivot.x+x*c-y*s; p.y=pivot.y+x*s+y*c;
+    }
+    p
 }
 
 fn skin_vertex(v:&Vertex,palette:&SkinPalette,motion:MotionIntent)->Vec3{
