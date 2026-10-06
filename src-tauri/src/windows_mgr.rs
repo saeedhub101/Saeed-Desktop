@@ -1,6 +1,9 @@
+use std::{sync::mpsc, thread, time::Duration};
+
 use tauri::{
     image::Image,
     AppHandle,
+    Emitter,
     Manager,
     WebviewUrl,
     WebviewWindowBuilder,
@@ -8,6 +11,18 @@ use tauri::{
 
 use crate::app::AppState;
 use crate::settings::{CharacterScale, Position};
+
+/// How long Rust waits for the page to report that its 3D cleanup finished.
+const CLEANUP_TIMEOUT: Duration = Duration::from_millis(1000);
+/// Short pause after the acknowledgement so the GPU process can act on the
+/// context-loss request before the WebView is torn down.
+const CLEANUP_GRACE: Duration = Duration::from_millis(100);
+
+/// Progress of a Hide, so a Show that arrives mid-hide is not lost.
+pub enum HideState {
+    Idle,
+    Hiding { reshow: bool },
+}
 
 fn size(scale: CharacterScale) -> u32 {
     match scale {
@@ -35,6 +50,16 @@ fn default_position(app: &AppHandle, width: u32) -> Position {
 }
 
 pub fn create_character_window(app: &AppHandle) -> Result<(), String> {
+    if let Some(state) = app.try_state::<AppState>() {
+        if let Ok(mut hide) = state.hide_state.lock() {
+            if let HideState::Hiding { reshow } = &mut *hide {
+                // Window is being torn down; recreate it once that finishes.
+                *reshow = true;
+                return Ok(());
+            }
+        }
+    }
+
     if let Some(window) = app.get_webview_window("character") {
         window.show().map_err(|e| e.to_string())?;
         window.set_focus().map_err(|e| e.to_string())?;
@@ -94,6 +119,7 @@ pub fn create_character_window(app: &AppHandle) -> Result<(), String> {
         .set_ignore_cursor_events(false)
         .map_err(|e| e.to_string())?;
 
+    crate::cursor_probe::start(app);
     state.logger.info("Character window created");
 
     if settings.character.position.x < 0 || settings.character.position.y < 0 {
@@ -111,16 +137,114 @@ pub fn create_character_window(app: &AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+/// Destroys the character window after asking the page to release its 3D
+/// resources first (geometries, materials, textures, renderer, GL context).
+///
+/// Blocks while waiting for the page, so it must NOT run on the main thread:
+/// the acknowledgement is delivered through the main thread's event loop.
 pub fn destroy_character_window(app: &AppHandle) -> Result<(), String> {
-    if let Some(window) = app.get_webview_window("character") {
-        window.destroy().map_err(|e| e.to_string())?;
+    let Some(window) = app.get_webview_window("character") else {
+        return Ok(());
+    };
 
-        if let Some(state) = app.try_state::<AppState>() {
-            state.logger.info("Character window destroyed");
+    crate::cursor_probe::stop(app);
+
+    let state = app.try_state::<AppState>();
+
+    if let Some(state) = &state {
+        let (sender, receiver) = mpsc::channel();
+
+        if let Ok(mut slot) = state.cleanup_ack.lock() {
+            *slot = Some(sender);
+        }
+
+        if window.emit("prepare-destroy", ()).is_ok() {
+            match receiver.recv_timeout(CLEANUP_TIMEOUT) {
+                Ok(()) => {
+                    state.logger.info("Character renderer cleanup acknowledged");
+                    thread::sleep(CLEANUP_GRACE);
+                }
+                Err(_) => state
+                    .logger
+                    .error("Character renderer cleanup timed out; destroying anyway"),
+            }
+        }
+
+        if let Ok(mut slot) = state.cleanup_ack.lock() {
+            *slot = None;
         }
     }
 
+    window.destroy().map_err(|e| e.to_string())?;
+
+    if let Some(state) = &state {
+        state.logger.info("Character window destroyed");
+    }
+
     Ok(())
+}
+
+/// Starts a graceful Hide on a worker thread and returns immediately.
+pub fn hide_character(app: &AppHandle) {
+    let Some(state) = app.try_state::<AppState>() else {
+        return;
+    };
+
+    {
+        let Ok(mut hide) = state.hide_state.lock() else {
+            return;
+        };
+
+        if let HideState::Hiding { reshow } = &mut *hide {
+            // Latest intent wins: a second Hide cancels a pending re-show.
+            *reshow = false;
+            return;
+        }
+
+        *hide = HideState::Hiding { reshow: false };
+    }
+
+    let app = app.clone();
+
+    thread::spawn(move || {
+        let result = destroy_character_window(&app);
+        finish_hide(&app, result);
+    });
+}
+
+fn finish_hide(app: &AppHandle, result: Result<(), String>) {
+    let Some(state) = app.try_state::<AppState>() else {
+        return;
+    };
+
+    let reshow = match state.hide_state.lock() {
+        Ok(mut hide) => {
+            let reshow = matches!(*hide, HideState::Hiding { reshow: true });
+            *hide = HideState::Idle;
+            reshow
+        }
+        Err(_) => false,
+    };
+
+    if let Err(error) = result {
+        state
+            .logger
+            .error(&format!("Character window destroy failed: {error}"));
+    }
+
+    if reshow {
+        let _ = show_character(app);
+    } else if let Ok(mut settings) = state.settings.lock() {
+        settings.character.visible = false;
+
+        if let Ok(dir) = crate::app::data_dir(app) {
+            let _ = settings.save(&dir);
+        }
+
+        state.logger.info("Character window hidden");
+    }
+
+    crate::tray::refresh(app);
 }
 
 pub fn show_character(app: &AppHandle) -> Result<(), String> {
