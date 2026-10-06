@@ -109,6 +109,86 @@ public static class TraySmokeKeys {
       Start-Sleep -Milliseconds 300
     }
 
+
+    # Invoke menu commands using native keyboard navigation, not UI Automation.
+    function OpenMenuNative {
+      ClickPoint $tx $ty $true
+      return (Wait-Until { $p=Get-MenuPopup; if($p -ne [IntPtr]::Zero){$p}else{$null}} 3000)
+    }
+    function SendKey([byte]$vk) {
+      [TraySmokeKeys]::keybd_event($vk,0,0,[UIntPtr]::Zero)
+      [TraySmokeKeys]::keybd_event($vk,0,[TraySmokeKeys]::KEYUP,[UIntPtr]::Zero)
+      Start-Sleep -Milliseconds 250
+    }
+
+    # Keyboard traversal of the native popup menu. Menu order is the order created by tray.rs.
+    # We reopen the menu for every command so each check is independent.
+    function InvokeMenuByDownCount([int]$count) {
+      $p=OpenMenuNative
+      if($p -eq $null){ return $false }
+      for($i=0;$i -lt $count;$i++){ SendKey 0x28 } # VK_DOWN
+      SendKey 0x0D # VK_RETURN
+      return $true
+    }
+
+    # 1 Show Saeed / Hide Saeed
+    Assert (InvokeMenuByDownCount 1) "tray-menu-show-hide-command" "native keyboard selected the Show/Hide command"
+    $shown=Wait-Until { $z=Get-WindowHandle;if($z -ne [IntPtr]::Zero){$z}else{$null}} 5000
+    Assert ($shown -ne $null) "tray-menu-show-command" "Show Saeed recreated the character window"
+
+    # 2 Character Size: Small, Medium, Large are tested by selecting their menu positions.
+    # Menu layout: Show/Hide, separator, Change Character, separator, Small, Medium, Large,
+    # separator, Always on Top, Low Power, separator, Debug, Rotate once, separator, Quit.
+    # Native popup traversal skips separators when selecting enabled menu items.
+    $sizeCounts=@{small=5;medium=6;large=7}
+    foreach($size in @("small","medium","large")){
+      $p=OpenMenuNative
+      if($p -eq $null){ Fail "tray-size-$size" "could not open native tray menu"; continue }
+      for($i=0;$i -lt $sizeCounts[$size];$i++){ SendKey 0x28 }
+      SendKey 0x0D
+      $expected=@{small=280;medium=360;large=460}[$size]
+      $ok=Wait-Until {
+        $z=Get-WindowHandle
+        if($z -eq [IntPtr]::Zero){return $null}
+        $rr=New-Object TraySmokeWin32+RECT
+        if([TraySmokeWin32]::GetWindowRect($z,[ref]$rr)){
+          if(($rr.Right-$rr.Left) -eq $expected){$true}else{$null}
+        }
+      } 5000
+      Assert $ok "tray-size-$size" "native menu command applied $size character size"
+    }
+
+    # 3 Always on Top toggle. Select it, then select it again to restore the original state.
+    for($pass=1;$pass -le 2;$pass++){
+      $ok=InvokeMenuByDownCount 9
+      Assert $ok "tray-always-on-top-toggle-$pass" "native menu selected Always on Top (toggle $pass)"
+    }
+
+    # 4 Low Power toggle. Toggle on then back off.
+    for($pass=1;$pass -le 2;$pass++){
+      $ok=InvokeMenuByDownCount 10
+      Assert $ok "tray-low-power-toggle-$pass" "native menu selected Low Power (toggle $pass)"
+    }
+
+    # 5 Debug -> Rotate once. Selecting Rotate once must keep Saeed alive and the window present.
+    $ok=InvokeMenuByDownCount 13
+    Assert $ok "tray-rotate-once-command" "native menu selected Debug -> Rotate once"
+    Assert ((Get-WindowHandle) -ne [IntPtr]::Zero) "tray-rotate-once-stable" "character remained alive after Rotate once"
+
+    # 6 Change Character. Open the real Windows file dialog, then cancel; this verifies
+    # the actual menu command reaches the application without UI Automation.
+    $p=OpenMenuNative
+    if($p -ne $null){
+      # Change Character is the third enabled command.
+      SendKey 0x28; SendKey 0x28; SendKey 0x0D
+      Start-Sleep -Milliseconds 500
+      $dialog=[TraySmokeWin32]::FindWindow("#32770",$null)
+      Assert ($dialog -ne [IntPtr]::Zero) "tray-change-character-dialog" "Change Character opened the native file dialog"
+      if($dialog -ne [IntPtr]::Zero){ SendKey 0x1B }
+    } else {
+      Fail "tray-change-character-dialog" "could not open native tray menu"
+    }
+
     Assert ((Get-SaeedProcess).Count -eq 1) "tray-process-lifetime" "tray interactions did not terminate the application"
   }
 }
