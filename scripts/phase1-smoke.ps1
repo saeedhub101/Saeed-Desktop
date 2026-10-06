@@ -8,6 +8,7 @@ Set-StrictMode -Version Latest
 
 Add-Type -AssemblyName UIAutomationClient
 Add-Type -AssemblyName UIAutomationTypes
+Add-Type -AssemblyName System.Windows.Forms
 Add-Type @"
 using System;
 using System.Runtime.InteropServices;
@@ -24,10 +25,12 @@ public static class Win32Input {
 
 $results = [ordered]@{}
 $script:CurrentTest = "setup"
-trap { Write-Host "FAIL: $script:CurrentTest - $($_.Exception.Message)" -ForegroundColor Red; $results[$script:CurrentTest] = "FAIL - $($_.Exception.Message)"; continue }
+# The smoke suite is deliberately non-fail-fast. Runtime/UIA exceptions are recorded as FAIL and execution continues.
+function Record-Exception([string]$name,[System.Exception]$error) { Fail $name $error.Exception.Message }
 function Pass($name,$note="") { $results[$name] = "PASS" + $(if($note){" - $note"}else{""}); Write-Host "PASS: $name $note" -ForegroundColor Green }
 function Fail($name,$note) { $results[$name] = "FAIL - $note"; Write-Host "FAIL: $name - $note" -ForegroundColor Red }
 function Assert($condition,$name,$note) { if($condition){Pass $name $note}else{Fail $name $note} }
+function Get-UIAEnabled([System.Windows.Automation.AutomationElement]$e) { if($null -eq $e){ return $null }; try { return [bool]$e.Current.IsEnabled } catch { return $null } }
 
 function Wait-Until([scriptblock]$Condition,[int]$TimeoutMs=15000) {
   $end=(Get-Date).AddMilliseconds($TimeoutMs)
@@ -81,11 +84,13 @@ function Find-Element([string]$Name,[int]$TimeoutMs=5000,[System.Windows.Automat
   } $TimeoutMs
 }
 function Invoke-UIA([System.Windows.Automation.AutomationElement]$e) {
+  if($null -eq $e){ throw "UIA element is null" }
   $pattern=$null
   if($e.TryGetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern,[ref]$pattern)){ $pattern.Invoke(); return }
   if($e.TryGetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern,[ref]$pattern)){ $pattern.Toggle(); return }
   if($e.TryGetCurrentPattern([System.Windows.Automation.ExpandCollapsePattern]::Pattern,[ref]$pattern)){ $pattern.Expand(); return }
-  throw "Element has no invokable UIA pattern: $($e.Current.Name)"
+  try { $name=$e.Current.Name } catch { $name="" }
+  throw "Element has no invokable UIA pattern: $name"
 }
 function Open-TrayMenu {
   # Windows 11 notification icons are not consistently exposed as Button elements.
@@ -147,10 +152,15 @@ function Open-TrayMenu {
       Y = [int]($rect.Y + ($rect.Height / 2))
     }
   }
-  [Win32Input]::SetCursorPos([int]$pt.X,[int]$pt.Y)|Out-Null
-  [Win32Input]::mouse_event([Win32Input]::RIGHTDOWN,0,0,0,[UIntPtr]::Zero)
-  [Win32Input]::mouse_event([Win32Input]::RIGHTUP,0,0,0,[UIntPtr]::Zero)
-  Start-Sleep -Milliseconds 300
+  for($attempt=0;$attempt -lt 3;$attempt++) {
+    [Win32Input]::SetCursorPos([int]$pt.X,[int]$pt.Y)|Out-Null
+    [Win32Input]::mouse_event([Win32Input]::RIGHTDOWN,0,0,0,[UIntPtr]::Zero)
+    [Win32Input]::mouse_event([Win32Input]::RIGHTUP,0,0,0,[UIntPtr]::Zero)
+    Start-Sleep -Milliseconds 700
+    if(Menu-Item "Show Saeed" 800 -or Menu-Item "Hide Saeed" 800 -or Menu-Item "Change Character..." 800){ return $true }
+    try { [System.Windows.Forms.SendKeys]::SendWait("{ESC}") } catch {}
+  }
+  return $false
 }
 function Menu-Item([string]$name,[int]$timeout=3000) {
   Find-Element $name $timeout
@@ -211,7 +221,7 @@ Pass "second-launch-focus" "single-instance plugin handled second launch"
 
 Open-TrayMenu
 $show=Menu-Item "Show Saeed";$hide=Menu-Item "Hide Saeed"
-Assert ($show.Current.IsEnabled -eq $false -and $hide.Current.IsEnabled -eq $true) "tray-menu-visible-state" "Show disabled / Hide enabled"
+Assert ((Get-UIAEnabled $show) -eq $false -and (Get-UIAEnabled $hide) -eq $true) "tray-menu-visible-state" "Show disabled / Hide enabled"
 Pass "tray-icon" "Saeed tray icon is UIA-visible"
 Invoke-Menu "Hide Saeed"
 $gone=Wait-Until { if((Get-WindowHandle)-eq [IntPtr]::Zero){$true}else{$null}} 10000
@@ -223,7 +233,7 @@ $wv=@($children|Where-Object{try{(Get-Process -Id $_ -ErrorAction Stop).ProcessN
 Assert ($wv.Count -eq 0) "webview2-cleanup" "no WebView2 descendants remain after Hide"
 Open-TrayMenu
 $show=Menu-Item "Show Saeed";$hide=Menu-Item "Hide Saeed"
-Assert ($show.Current.IsEnabled -eq $true -and $hide.Current.IsEnabled -eq $false) "tray-menu-hidden-state" "Show enabled / Hide disabled"
+Assert ((Get-UIAEnabled $show) -eq $true -and (Get-UIAEnabled $hide) -eq $false) "tray-menu-hidden-state" "Show enabled / Hide disabled"
 Invoke-Menu "Show Saeed"
 $h=Wait-Until { $x=Get-WindowHandle;if($x -ne [IntPtr]::Zero){$x}else{$null}} 10000
 Assert $h "show-recreates-window" "Show recreated the character window"
@@ -303,11 +313,10 @@ $edit=Wait-Until {
 } 8000
 Assert $edit "change-character-dialog" "native file dialog appeared"
 $vp=$null
-Assert ($edit.TryGetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern,[ref]$vp)) "change-character-input" "file dialog filename field exposes ValuePattern"
-$vp.SetValue($valid)
+if($edit){ try { $hasValue=$edit.TryGetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern,[ref]$vp); Assert $hasValue "change-character-input" "file dialog filename field exposes ValuePattern"; if($hasValue){$vp.SetValue($valid)} } catch { Record-Exception "change-character-input" $_ } } else { Fail "change-character-input" "file dialog edit control was not found" }
 $open=Find-Element "Open" 5000 ([System.Windows.Automation.ControlType]::Button)
 Assert $open "change-character-open" "native Open button found"
-Invoke-UIA $open
+if($open){ try { Invoke-UIA $open } catch { Record-Exception "change-character-open" $_ } }
 Start-Sleep -Seconds 3
 $settings=Get-Content $settingsPath -Raw|ConvertFrom-Json
 Assert ($settings.character.currentId -ne "default") "change-character" "real Change Character flow selected a new character"
