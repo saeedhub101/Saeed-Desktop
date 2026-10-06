@@ -2,7 +2,7 @@ use std::{
     fs,
     path::PathBuf,
     sync::{
-        atomic::{AtomicBool, AtomicU64, Ordering},
+        atomic::{AtomicBool, Ordering},
         mpsc, Mutex,
     },
     thread,
@@ -26,8 +26,6 @@ pub struct AppState {
     pub logger: Logger,
     pub character_destroying: AtomicBool,
     pub cleanup_ack: Mutex<Option<mpsc::Sender<()>>>,
-    pub position_generation: AtomicU64,
-    pub position_save_pending: AtomicBool,
     pub probe_generation: AtomicU64,
 }
 
@@ -53,7 +51,9 @@ pub fn run() {
         .setup(|app| {
             let dir = data_dir(app.handle())?;
             let logger = Logger::new(&dir)?;
-            let settings = AppSettings::load(&dir).unwrap_or_default();
+            let mut settings = AppSettings::load(&dir).unwrap_or_default();
+            // Every process launch starts with Saeed visible. Runtime Hide is not a startup preference.
+            settings.character.visible = true;
             settings.save(&dir)?;
 
             app.manage(AppState {
@@ -61,8 +61,6 @@ pub fn run() {
                 logger,
                 character_destroying: AtomicBool::new(false),
                 cleanup_ack: Mutex::new(None),
-                position_generation: AtomicU64::new(0),
-                position_save_pending: AtomicBool::new(false),
                 probe_generation: AtomicU64::new(0),
             });
 
@@ -104,11 +102,7 @@ pub fn run() {
                     let _ = hide_character(app.clone());
                 }
                 tauri::WindowEvent::Moved(position) if window.label() == "character" => {
-                    let (x, y) = clamp_character_position(&window, position.x, position.y);
-                    if x != position.x || y != position.y {
-                        let _ = window.set_position(tauri::PhysicalPosition::new(x, y));
-                    }
-                    save_position_debounced(&app, x, y);
+                    clamp_character_window_position(&window, position.x, position.y);
                 }
                 _ => {}
             }
@@ -165,25 +159,8 @@ pub(crate) fn create_character_window(app: &AppHandle) -> Result<(), String> {
     .resizable(false)
     .visible(true);
 
-    if settings.character.position.x >= 0 && settings.character.position.y >= 0 {
-        builder = builder.position(
-            settings.character.position.x as f64,
-            settings.character.position.y as f64,
-        );
-    }
-
     let window = builder.build().map_err(|e| e.to_string())?;
-    let (x, y) = clamp_character_position(
-        &window,
-        settings.character.position.x,
-        settings.character.position.y,
-    );
-    if settings.character.position.x >= 0
-        && settings.character.position.y >= 0
-        && (x != settings.character.position.x || y != settings.character.position.y)
-    {
-        let _ = window.set_position(tauri::PhysicalPosition::new(x, y));
-    }
+    position_character_above_tray(&window)?;
     cursor_probe::start(app);
     let _ = window.set_focus();
     Ok(())
@@ -197,8 +174,8 @@ pub(crate) fn destroy_character_window(app: &AppHandle) {
     };
 
     let state = app.state::<AppState>();
-    // Persist the lifecycle state before asynchronous WebView teardown so a
-    // fast tray Quit cannot resurrect the character on the next launch.
+    // Runtime Hide updates the current tray state, but the next process launch
+    // always starts with the character visible.
     set_visible(app, false);
     cursor_probe::stop(app);
     if state.character_destroying.swap(true, Ordering::SeqCst) {
@@ -248,60 +225,55 @@ fn set_visible(app: &AppHandle, visible: bool) {
     }
 }
 
-fn clamp_character_position(window: &tauri::WebviewWindow, x: i32, y: i32) -> (i32, i32) {
-    let Ok(Some(monitor)) = window.current_monitor() else {
-        return (x, y);
-    };
-
+fn clamp_position(
+    monitor: &tauri::Monitor,
+    window_size: tauri::PhysicalSize<u32>,
+    x: i32,
+    y: i32,
+) -> (i32, i32) {
     let monitor_position = monitor.position();
     let monitor_size = monitor.size();
-    let window_size = match window.outer_size() {
-        Ok(size) => size,
-        Err(_) => return (x, y),
-    };
-
-    let min_x = monitor_position.x;
-    let min_y = monitor_position.y;
     let max_x = monitor_position.x
         + monitor_size.width.saturating_sub(window_size.width) as i32;
     let max_y = monitor_position.y
         + monitor_size.height.saturating_sub(window_size.height) as i32;
-
-    (x.clamp(min_x, max_x), y.clamp(min_y, max_y))
+    (
+        x.clamp(monitor_position.x, max_x),
+        y.clamp(monitor_position.y, max_y),
+    )
 }
 
-fn save_position_debounced(app: &AppHandle, x: i32, y: i32) {
-    let Some(state) = app.try_state::<AppState>() else { return };
-    if let Ok(mut settings) = state.settings.lock() {
-        settings.character.position.x = x;
-        settings.character.position.y = y;
-    }
-
-    state.position_generation.fetch_add(1, Ordering::SeqCst);
-    if state.position_save_pending.swap(true, Ordering::SeqCst) {
-        return;
-    }
-
-    let app = app.clone();
-    thread::spawn(move || {
-        loop {
-            thread::sleep(Duration::from_millis(350));
-            let Some(state) = app.try_state::<AppState>() else { return };
-            let generation = state.position_generation.load(Ordering::SeqCst);
-            thread::sleep(Duration::from_millis(250));
-            if state.position_generation.load(Ordering::SeqCst) != generation {
-                continue;
-            }
-            if let Ok(settings) = state.settings.lock() {
-                if let Ok(dir) = data_dir(&app) {
-                    let _ = settings.save(&dir);
-                }
-            }
-            state.position_save_pending.store(false, Ordering::SeqCst);
-            break;
+fn clamp_character_window_position(window: &tauri::Window, x: i32, y: i32) {
+    let Ok(Some(monitor)) = window.current_monitor() else { return };
+    let Ok(size) = window.outer_size() else { return };
+    let (x, y) = clamp_position(&monitor, size, x, y);
+    if let Ok(current) = window.outer_position() {
+        if current.x != x || current.y != y {
+            let _ = window.set_position(tauri::PhysicalPosition::new(x, y));
         }
-    });
+    }
 }
+
+fn position_character_above_tray(window: &tauri::WebviewWindow) -> Result<(), String> {
+    let monitor = window
+        .current_monitor()
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "No monitor available".to_string())?;
+    let work_area = monitor.work_area();
+    let size = window.outer_size().map_err(|e| e.to_string())?;
+    let margin = 12i32;
+    let x = work_area.position.x
+        + work_area.size.width.saturating_sub(size.width) as i32
+        - margin;
+    let y = work_area.position.y
+        + work_area.size.height.saturating_sub(size.height) as i32
+        - margin;
+    let (x, y) = clamp_position(&monitor, size, x, y);
+    window
+        .set_position(tauri::PhysicalPosition::new(x, y))
+        .map_err(|e| e.to_string())
+}
+
 
 #[tauri::command]
 fn get_settings(state: State<'_, AppState>) -> AppSettings {
