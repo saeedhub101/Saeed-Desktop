@@ -622,9 +622,9 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     }
     {
         let weak = window.as_weak();
-        tray.on_hide_saeed(move || { if let Some(window) = weak.upgrade() { window.hide(); } });
+        tray.on_hide_saeed(move || { if let Some(window) = weak.upgrade() { let _ = window.hide(); } });
     }
-    tray.on_exit_saeed(move || { slint::quit_event_loop(); });
+    tray.on_exit_saeed(move || { let _ = slint::quit_event_loop(); });
     window.show()?;
     tray.show()?;
     slint::run_event_loop()?;
