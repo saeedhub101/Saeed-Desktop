@@ -26,12 +26,6 @@ export const sizes: Record<Scale, number> = {
 const MASK_SIZE = 64;
 const HIT_ALPHA = 12;
 
-type CursorProbe = {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-};
 
 export class CharacterScene {
   scene = new THREE.Scene();
