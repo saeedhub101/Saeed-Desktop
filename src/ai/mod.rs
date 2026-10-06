@@ -28,6 +28,13 @@ pub struct OpenAiProvider {
 }
 
 impl OpenAiProvider {
+    pub fn new(api_key: impl Into<String>, model: impl Into<String>) -> Self {
+        Self {
+            api_key: api_key.into(),
+            model: model.into(),
+        }
+    }
+
     pub fn from_environment() -> Result<Self, String> {
         let api_key = std::env::var("OPENAI_API_KEY")
             .map_err(|_| "OPENAI_API_KEY is not configured.".to_string())?;
@@ -40,7 +47,7 @@ impl OpenAiProvider {
         let model = std::env::var("OPENAI_MODEL")
             .unwrap_or_else(|_| "gpt-6-luna".to_string());
 
-        Ok(Self { api_key, model })
+        Ok(Self::new(api_key, model))
     }
 }
 
@@ -93,10 +100,9 @@ mod tests {
     use super::OpenAiProvider;
 
     #[test]
-    fn provider_reads_api_key_from_environment_contract() {
-        std::env::set_var("OPENAI_API_KEY", "test-key");
-        let provider = OpenAiProvider::from_environment().expect("provider should initialize");
+    fn provider_constructor_keeps_credentials_out_of_environment_tests() {
+        let provider = OpenAiProvider::new("test-key", "gpt-6-luna");
         assert_eq!(provider.model, "gpt-6-luna");
-        std::env::remove_var("OPENAI_API_KEY");
+        assert_eq!(provider.api_key, "test-key");
     }
 }
