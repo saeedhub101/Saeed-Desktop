@@ -7,6 +7,9 @@ description = "Saeed AI desktop companion"
 [dependencies]
 slint = "1.17"
 rusqlite = { version = "0.37", features = ["bundled"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+ureq = { version = "3", features = ["json"] }
 
 [build-dependencies]
 slint-build = "1.17"
