@@ -44,6 +44,14 @@ impl SaeedCore {
         self.session.messages()
     }
 
+    pub fn snapshot_messages(&self) -> Vec<Message> {
+        self.session.messages().to_vec()
+    }
+
+    pub fn add_assistant_response(&mut self, source: MessageSource, text: impl Into<String>) {
+        self.add_message("assistant", text, source);
+    }
+
     pub fn complete<P: AiProvider>(&self, provider: &P) -> Result<AiResponse, String> {
         provider.complete(&AiRequest {
             messages: self.session.messages().to_vec(),
