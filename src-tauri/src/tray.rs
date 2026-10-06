@@ -6,7 +6,7 @@ use tauri::{
     menu::{
         CheckMenuItemBuilder, MenuBuilder, MenuItemBuilder, SubmenuBuilder,
     },
-    runtime::dpi::PhysicalSize,
+    PhysicalSize,
     tray::{
         MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent,
     },
