@@ -36,6 +36,7 @@ fn show_error(window: &AppWindow, message: String) {
 }
 
 fn update_character_image(weak: &slint::Weak<AppWindow>, pixels: slint::SharedPixelBuffer<slint::Rgba8Pixel>) {
+    let weak = weak.clone();
     let _ = slint::invoke_from_event_loop(move || {
         if let Some(window) = weak.upgrade() {
             window.set_character_image(slint::Image::from_rgba8(pixels));
