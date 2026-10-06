@@ -7,7 +7,7 @@ use std::sync::{
 use std::thread;
 use std::time::Duration;
 
-use saeed_desktop::ai::{AiProvider, LocalCommandAiProvider, OpenAiProvider};
+use saeed_desktop::ai::{AiProvider, AiRequest, LocalCommandAiProvider, OpenAiProvider};
 use saeed_desktop::core::SaeedCore;
 use saeed_desktop::storage::{AppSettings, Storage};
 use saeed_desktop::voice::{MicrophoneRecorder, VoiceController};
@@ -190,35 +190,46 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             thread::spawn(move || {
                 let result = (|| -> Result<String, String> {
-                    let mut core = core.lock()
-                        .map_err(|_| "Core state is unavailable.".to_string())?;
-
-                    core.add_chat_message("user", &text);
-                    if let Some(message) = core.messages().last() {
-                        if let Ok(storage) = Storage::open_default() {
-                            storage.append_message(message)
-                                .map_err(|error| format!("Could not persist message: {error}"))?;
+                    let messages = {
+                        let mut core = core.lock()
+                            .map_err(|_| "Core state is unavailable.".to_string())?;
+                        core.add_chat_message("user", &text);
+                        if let Some(message) = core.messages().last() {
+                            if let Ok(storage) = Storage::open_default() {
+                                storage.append_message(message)
+                                    .map_err(|error| format!("Could not persist message: {error}"))?;
+                            }
                         }
-                    }
+                        core.snapshot_messages()
+                    };
 
                     let response = if settings.ai_model.trim().eq_ignore_ascii_case("local") {
                         let provider = LocalCommandAiProvider::from_environment()?;
-                        core.complete_chat(&provider)?
+                        provider.complete(&AiRequest { messages })?
                     } else {
                         let api_key = settings.openai_api_key.clone()
                             .ok_or_else(|| "Add your OpenAI API key in Settings first.".to_string())?;
                         let provider = OpenAiProvider::from_config(api_key, settings.ai_model)?;
-                        core.complete_chat(&provider)?
+                        provider.complete(&AiRequest { messages })?
                     };
 
-                    if let Some(message) = core.messages().last() {
-                        if let Ok(storage) = Storage::open_default() {
-                            storage.append_message(message)
-                                .map_err(|error| format!("Could not persist response: {error}"))?;
+                    let response_text = response.text.clone();
+                    {
+                        let mut core = core.lock()
+                            .map_err(|_| "Core state is unavailable.".to_string())?;
+                        core.add_assistant_response(
+                            saeed_desktop::session::MessageSource::Chat,
+                            response_text.clone(),
+                        );
+                        if let Some(message) = core.messages().last() {
+                            if let Ok(storage) = Storage::open_default() {
+                                storage.append_message(message)
+                                    .map_err(|error| format!("Could not persist response: {error}"))?;
+                            }
                         }
                     }
 
-                    Ok(response.text)
+                    Ok(response_text)
                 })();
 
                 let weak = weak.clone();
@@ -232,7 +243,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 );
                                 window.set_status("Ready • Shared conversation".into());
                             }
-                            Err(error) => show_error(window.as_ref(), error),
+                            Err(error) => show_error(&window, error),
                         }
                     }
                 });
