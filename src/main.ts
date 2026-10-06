@@ -20,6 +20,7 @@ const windowHandle = getCurrentWindow();
 let scene: CharacterScene | null = null;
 let statusTimer: number | undefined;
 let contextRecoveryAttempts = 0;
+let currentScale: keyof typeof sizes = "medium";
 let shuttingDown = false;
 
 type Probe = { x: number; y: number; width: number; height: number };
@@ -132,9 +133,8 @@ async function init(): Promise<void> {
     settings.performance.lowPower,
   );
 
-  resizeScene(
-    sizes[settings.character.scale],
-  );
+  currentScale = settings.character.scale;
+  resizeScene(sizes[currentScale]);
 
   installContextRecovery();
 
@@ -183,9 +183,7 @@ async function init(): Promise<void> {
       }
 
       scene.setLowPower(event.payload);
-      resizeScene(
-        sizes[settings.character.scale],
-      );
+      resizeScene(sizes[currentScale]);
     },
   );
 
@@ -197,7 +195,9 @@ async function init(): Promise<void> {
   await listen(
     "character-reload",
     () => {
-      resizeScene(window.innerWidth);
+      const size = window.innerWidth;
+      currentScale = size <= sizes.small ? "small" : size <= sizes.medium ? "medium" : "large";
+      resizeScene(size);
       return scene?.load().catch((error) => {
         console.error(error);
         void invoke("log_error", {
@@ -227,7 +227,9 @@ async function init(): Promise<void> {
 window.addEventListener("beforeunload", () => shutdownScene());
 
 window.addEventListener("resize", () => {
-  resizeScene(window.innerWidth);
+  const size = window.innerWidth;
+  currentScale = size <= sizes.small ? "small" : size <= sizes.medium ? "medium" : "large";
+  resizeScene(size);
 });
 
 void init().catch((error) => {
