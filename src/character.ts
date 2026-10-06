@@ -38,6 +38,8 @@ export class CharacterScene {
   private maskTarget: THREE.WebGLRenderTarget;
   private lowPower: boolean;
   private disposed = false;
+  private loadGeneration = 0;
+  private rotationFrame: number | null = null;
 
   /** Called after every mask refresh so hit-testing can be re-run. */
   onMaskUpdated: (() => void) | null = null;
@@ -166,6 +168,11 @@ export class CharacterScene {
     }
 
     this.disposed = true;
+    this.loadGeneration += 1;
+    if (this.rotationFrame !== null) {
+      cancelAnimationFrame(this.rotationFrame);
+      this.rotationFrame = null;
+    }
     this.scheduler.dispose();
     this.onMaskUpdated = null;
 
@@ -261,6 +268,7 @@ export class CharacterScene {
   }
 
   async load(): Promise<void> {
+    const generation = ++this.loadGeneration;
     if (this.model) {
       this.disposeObject(this.model);
       this.scene.remove(this.model);
@@ -269,7 +277,7 @@ export class CharacterScene {
 
     const bytes = await invoke<ArrayBuffer>("get_character_model");
 
-    if (this.disposed) {
+    if (this.disposed || generation !== this.loadGeneration) {
       return;
     }
 
@@ -284,7 +292,7 @@ export class CharacterScene {
         bytes,
         "",
         (gltf) => {
-          if (this.disposed) {
+          if (this.disposed || generation !== this.loadGeneration) {
             this.disposeObject(gltf.scene);
             resolve();
             return;
@@ -310,6 +318,11 @@ export class CharacterScene {
       return;
     }
 
+    if (this.rotationFrame !== null) {
+      cancelAnimationFrame(this.rotationFrame);
+      this.rotationFrame = null;
+    }
+
     const start = performance.now();
     const base = this.model.rotation.y;
 
@@ -330,12 +343,13 @@ export class CharacterScene {
       this.scheduler.requestRender();
 
       if (progress < 1) {
-        requestAnimationFrame(tick);
+        this.rotationFrame = requestAnimationFrame(tick);
       } else {
+        this.rotationFrame = null;
         this.scheduler.setActive(false);
       }
     };
 
-    requestAnimationFrame(tick);
+    this.rotationFrame = requestAnimationFrame(tick);
   }
 }
