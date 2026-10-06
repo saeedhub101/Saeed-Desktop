@@ -56,15 +56,15 @@ pub fn install(app: &AppHandle) -> tauri::Result<()> {
         .menu(&menu)
         .show_menu_on_left_click(false)
         .on_menu_event(|app, event| match event.id().as_ref() {
-            "show" => { let _ = app::show_character(app); }
-            "hide" => { let _ = app::hide_character(app.clone()); }
+            "show" => { let _ = app::show_character_core(app); }
+            "hide" => { let _ = app::hide_character_core(app.clone()); }
             "change" => choose_character(app.clone()),
             "small" => set_scale(app, CharacterScale::Small),
             "medium" => set_scale(app, CharacterScale::Medium),
             "large" => set_scale(app, CharacterScale::Large),
             "top" => toggle_top(app),
             "low" => toggle_low(app),
-            "rotate" => { let _ = app::debug_rotate_once(app.clone()); }
+            "rotate" => { let _ = app::debug_rotate_once_core(app.clone()); }
             "quit" => app.exit(0),
             _ => {}
         })
@@ -86,13 +86,13 @@ pub fn install(app: &AppHandle) -> tauri::Result<()> {
 fn choose_character(app: AppHandle) {
     thread::spawn(move || {
         if let Some(path) = FileDialog::new().add_filter("GLB model", &["glb"]).pick_file() {
-            let _ = app::import_character(app.clone(), path.to_string_lossy().to_string(), app.state());
+            let _ = app::import_character_core(app.clone(), path.to_string_lossy().to_string(), app.state());
         }
     });
 }
 
 fn set_scale(app: &AppHandle, scale: CharacterScale) {
-    let _ = app::set_character_scale(app.clone(), scale, app.state());
+    let _ = app::set_character_scale_core(app.clone(), scale, app.state());
 }
 
 fn toggle_top(app: &AppHandle) {
@@ -113,7 +113,7 @@ fn toggle_top(app: &AppHandle) {
 fn toggle_low(app: &AppHandle) {
     let state = app.state::<AppState>();
     let enabled = state.settings.lock().map(|s| !s.performance.low_power).unwrap_or(false);
-    let _ = app::set_low_power(app.clone(), enabled, app.state());
+    let _ = app::set_low_power_core(app.clone(), enabled, app.state());
 }
 
 pub fn refresh(app: &AppHandle) {
