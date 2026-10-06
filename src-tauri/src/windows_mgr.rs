@@ -1,7 +1,6 @@
 use std::{sync::mpsc, thread, time::Duration};
 
 use tauri::{
-    image::Image,
     AppHandle,
     Emitter,
     Manager,
@@ -226,7 +225,7 @@ fn finish_hide(app: &AppHandle, result: Result<(), String>) {
         Err(_) => false,
     };
 
-    if let Err(error) = result {
+    if let Err(error) = &result {
         state
             .logger
             .error(&format!("Character window destroy failed: {error}"));
