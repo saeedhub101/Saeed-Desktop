@@ -15,6 +15,7 @@ use tauri::{
 };
 
 use crate::{
+    cursor_probe,
     logging::Logger,
     settings::{AppSettings, CharacterScale},
     tray,
@@ -27,6 +28,7 @@ pub struct AppState {
     pub cleanup_ack: Mutex<Option<mpsc::Sender<()>>>,
     pub position_generation: AtomicU64,
     pub position_save_pending: AtomicBool,
+    pub probe_generation: AtomicU64,
 }
 
 pub(crate) fn data_dir(app: &AppHandle) -> Result<PathBuf, String> {
@@ -61,6 +63,7 @@ pub fn run() {
                 cleanup_ack: Mutex::new(None),
                 position_generation: AtomicU64::new(0),
                 position_save_pending: AtomicBool::new(false),
+                probe_generation: AtomicU64::new(0),
             });
 
             app.state::<AppState>().logger.info("Core startup");
@@ -166,6 +169,7 @@ pub(crate) fn create_character_window(app: &AppHandle) -> Result<(), String> {
     }
 
     let window = builder.build().map_err(|e| e.to_string())?;
+    cursor_probe::start(app);
     let _ = window.set_focus();
     Ok(())
 }
@@ -178,6 +182,7 @@ pub(crate) fn destroy_character_window(app: &AppHandle) {
     };
 
     let state = app.state::<AppState>();
+    cursor_probe::stop(app);
     if state.character_destroying.swap(true, Ordering::SeqCst) {
         return;
     }
