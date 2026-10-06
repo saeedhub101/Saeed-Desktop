@@ -320,7 +320,15 @@ impl OpenAiSpeechToText {
         Self { api_key: api_key.into(), model: model.into() }
     }
 
-    pub fn from_config(api_key: impl Into<String>, model: impl Into<String>) -> Result<Self, String> {\n        let api_key = api_key.into().trim().to_string();\n        if api_key.is_empty() {\n            return Err("OpenAI API key is not configured. Open Settings and save your API key.".to_string());\n        }\n        Ok(Self::new(api_key, model))\n    }\n\n    pub fn from_config(\n        api_key: impl Into<String>,\n        model: impl Into<String>,\n        voice: impl Into<String>,\n    ) -> Result<Self, String> {\n        let api_key = api_key.into().trim().to_string();\n        if api_key.is_empty() {\n            return Err("OpenAI API key is not configured. Open Settings and save your API key.".to_string());\n        }\n        Ok(Self::new(api_key, model, voice))\n    }\n\n    pub fn from_environment() -> Result<Self, String> {
+    pub fn from_config(api_key: impl Into<String>, model: impl Into<String>) -> Result<Self, String> {
+        let api_key = api_key.into().trim().to_string();
+        if api_key.is_empty() {
+            return Err("OpenAI API key is not configured. Open Settings and save your API key.".to_string());
+        }
+        Ok(Self::new(api_key, model))
+    }
+
+    pub fn from_environment() -> Result<Self, String> {
         let api_key = std::env::var("OPENAI_API_KEY")
             .map_err(|_| "OPENAI_API_KEY is not configured.".to_string())?;
         let api_key = api_key.trim().to_string();
@@ -381,6 +389,18 @@ impl OpenAiTextToSpeech {
         voice: impl Into<String>,
     ) -> Self {
         Self { api_key: api_key.into(), model: model.into(), voice: voice.into() }
+    }
+
+    pub fn from_config(
+        api_key: impl Into<String>,
+        model: impl Into<String>,
+        voice: impl Into<String>,
+    ) -> Result<Self, String> {
+        let api_key = api_key.into().trim().to_string();
+        if api_key.is_empty() {
+            return Err("OpenAI API key is not configured. Open Settings and save your API key.".to_string());
+        }
+        Ok(Self::new(api_key, model, voice))
     }
 
     pub fn from_environment() -> Result<Self, String> {
