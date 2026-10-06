@@ -16,6 +16,8 @@ public static class Win32Input {
   [StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left, Top, Right, Bottom; }
   [DllImport("user32.dll")] public static extern bool SetCursorPos(int X, int Y);
   [DllImport("user32.dll")] public static extern void mouse_event(uint flags, uint dx, uint dy, uint data, UIntPtr extra);
+  [DllImport("user32.dll")] public static extern bool SystemParametersInfo(uint action, uint param, out RECT rect, uint flags);
+  public const uint SPI_GETWORKAREA=0x0030;
   public const uint LEFTDOWN=0x0002, LEFTUP=0x0004, RIGHTDOWN=0x0008, RIGHTUP=0x0010;
 }
 "@
@@ -177,9 +179,10 @@ $p2=Start-Process $exe -PassThru
 $h=Wait-Until { $x=Get-WindowHandle;if($x -ne [IntPtr]::Zero){$x}else{$null}} 15000
 Assert $h "show-via-single-instance" "second launch handed off to the existing tray process and recreated the character"
 $rect1=Get-Rect $h
-$rect1=Get-Rect $h
-$settings=Get-Content $settingsPath -Raw|ConvertFrom-Json
-Assert ($settings.character.position.x -ge 0 -or $settings.character.position.y -ge 0) "position-persisted" "window position is persisted"
+$work=New-Object Win32Input+RECT
+$workOk=[Win32Input]::SystemParametersInfo([Win32Input]::SPI_GETWORKAREA,0,[ref]$work,0)
+Assert $workOk "work-area" "Windows work area is available"
+Assert ([math]::Abs($rect1.Right-12-$work.Right) -le 20 -and [math]::Abs($rect1.Bottom-12-$work.Bottom) -le 20) "startup-position" "character starts automatically above the bottom-right tray/work-area corner"
 
 # Character drag: center is expected to hit the placeholder/model.
 $cx=[int](($rect1.Left+$rect1.Right)/2);$cy=[int](($rect1.Top+$rect1.Bottom)/2)
@@ -192,16 +195,20 @@ Start-Sleep -Milliseconds 100
 Start-Sleep -Seconds 2
 $rect2=Get-Rect $h
 Assert ([math]::Abs($rect2.Left-$rect1.Left) -ge 40) "drag" "center drag moved the window"
-$settings=Get-Content $settingsPath -Raw|ConvertFrom-Json
-Assert ([math]::Abs($settings.character.position.x-$rect2.Left) -le 5) "drag-persistence" "drop position persisted"
-$expectedLeft=$rect2.Left; $expectedTop=$rect2.Top
+# Position is intentionally not persisted. A fresh process must return to the
+# automatic bottom-right position instead of restoring the user's last drag.
 Get-SaeedProcess | Stop-Process -Force
 Wait-Until { if((Get-SaeedProcess).Count -eq 0){$true}else{$null}} 10000 | Out-Null
 $proc=Start-Process $exe -PassThru
 $h=Wait-Until { $x=Get-WindowHandle; if($x -ne [IntPtr]::Zero){$x}else{$null}} 15000
-Assert $h "restart" "application restarted after persistence check"
+Assert $h "restart" "application restarted after drag"
 $rectRestart=Get-Rect $h
-Assert ([math]::Abs($rectRestart.Left-$expectedLeft) -le 8 -and [math]::Abs($rectRestart.Top-$expectedTop) -le 8) "position-persistence-restart" "saved character position restored after process restart"
+$work=New-Object Win32Input+RECT
+$workOk=[Win32Input]::SystemParametersInfo([Win32Input]::SPI_GETWORKAREA,0,[ref]$work,0)
+Assert $workOk "work-area-restart" "Windows work area is available after restart"
+Assert ([math]::Abs($rectRestart.Right-12-$work.Right) -le 20 -and [math]::Abs($rectRestart.Bottom-12-$work.Bottom) -le 20) "startup-position-after-restart" "fresh launch returned to the automatic tray position, not the dragged position"
+$settings=Get-Content $settingsPath -Raw|ConvertFrom-Json
+Assert ($settings.character.visible -eq $true) "startup-visible-state" "fresh launch forces character visible regardless of previous runtime Hide"
 
 # Transparent corner must not drag the window.
 $rectBefore=Get-Rect $h
