@@ -74,8 +74,8 @@ pub fn create_character_window(app: &AppHandle) -> Result<(), String> {
         .clone();
 
     let width = size(settings.character.scale);
-    let position = if settings.character.position.x >= 0
-        && settings.character.position.y >= 0
+    let position = if settings.character.position.x != -1
+        || settings.character.position.y != -1
     {
         settings.character.position
     } else {
@@ -122,7 +122,7 @@ pub fn create_character_window(app: &AppHandle) -> Result<(), String> {
     crate::cursor_probe::start(app);
     state.logger.info("Character window created");
 
-    if settings.character.position.x < 0 || settings.character.position.y < 0 {
+    if settings.character.position.x == -1 && settings.character.position.y == -1 {
         let mut saved = state
             .settings
             .lock()
@@ -234,14 +234,16 @@ fn finish_hide(app: &AppHandle, result: Result<(), String>) {
 
     if reshow {
         let _ = show_character(app);
-    } else if let Ok(mut settings) = state.settings.lock() {
-        settings.character.visible = false;
+    } else if result.is_ok() {
+        if let Ok(mut settings) = state.settings.lock() {
+            settings.character.visible = false;
 
-        if let Ok(dir) = crate::app::data_dir(app) {
-            let _ = settings.save(&dir);
+            if let Ok(dir) = crate::app::data_dir(app) {
+                let _ = settings.save(&dir);
+            }
+
+            state.logger.info("Character window hidden");
         }
-
-        state.logger.info("Character window hidden");
     }
 
     crate::tray::refresh(app);
