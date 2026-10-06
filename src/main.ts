@@ -107,7 +107,9 @@ function installContextRecovery(): void {
 
       try {
         scene?.recreateRenderer();
-        void scene?.load().catch((error) => {
+        void scene?.load().then(() => {
+          contextRecoveryAttempts = 0;
+        }).catch((error) => {
           console.error(error);
           message(
             "Saeed could not load the character model.",
