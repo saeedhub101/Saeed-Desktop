@@ -48,7 +48,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     if settings.lock().unwrap().openai_api_key.is_some() {
         window.set_settings_api_key_status("API key saved in Windows Credential Manager".into());
     }
-    let core = Arc::new(Mutex::new(SaeedCore::new()));
+    let persisted_messages = storage.load_messages().unwrap_or_default();
+    let core = Arc::new(Mutex::new(SaeedCore::from_messages(persisted_messages.clone())));
+    if let Some(last) = persisted_messages.last() {
+        window.set_conversation(format!("{}: {}", last.role, last.content).into());
+    }
     let voice_active = Arc::new(AtomicBool::new(false));
     let voice_worker_running = Arc::new(AtomicBool::new(false));
 
@@ -174,6 +178,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             };
 
             core.add_chat_message("user", &text);
+            if let Some(message) = core.messages().last() {
+                if let Ok(storage) = Storage::open_default() {
+                    let _ = storage.append_message(message);
+                }
+            }
             window.set_status("Thinking…".into());
 
             let result = if settings.ai_model.trim().eq_ignore_ascii_case("local") {
@@ -203,6 +212,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             match result {
                 Ok(response) => {
+                    if let Some(message) = core.messages().last() {
+                        if let Ok(storage) = Storage::open_default() {
+                            let _ = storage.append_message(message);
+                        }
+                    }
                     window.set_conversation(
                         format!("You: {text}\n\nSaeed: {}", response.text).into(),
                     );
@@ -283,6 +297,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         Ok(result) => {
                             let transcript = result.transcript;
                             let response = result.response;
+                            if let Ok(core) = core.lock() {
+                                if let Ok(storage) = Storage::open_default() {
+                                    for message in core.messages().iter().rev().take(2).rev() {
+                                        let _ = storage.append_message(message);
+                                    }
+                                }
+                            }
                             let transcript_for_ui = transcript.clone();
                             let response_for_ui = response.clone();
                             let weak_for_ui = weak.clone();
