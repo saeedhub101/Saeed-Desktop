@@ -8,9 +8,10 @@ export component AppWindow inherits Window {
     min-height: 500px;
 
     in-out property <string> status: "Ready";
-    in-out property <string> conversation: "Saeed is ready. Chat and voice will share one session.";
+    in-out property <string> conversation: "Saeed is ready. Chat and voice share one conversation.";
 
     callback send-message(string);
+    callback submit-voice-transcript(string);
 
     VerticalBox {
         padding: 28px;
@@ -61,7 +62,9 @@ export component AppWindow inherits Window {
 
                     Button {
                         text: "Voice";
-                        clicked => { root.status = "Voice ready"; }
+                        clicked => {
+                            root.status = "Voice input is connected to the same conversation.";
+                        }
                     }
 
                     Button {
