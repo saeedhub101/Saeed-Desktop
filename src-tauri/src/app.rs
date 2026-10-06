@@ -101,10 +101,14 @@ pub fn run() {
                         return;
                     }
                     api.prevent_close();
-                    hide_character(app.clone());
+                    let _ = hide_character(app.clone());
                 }
                 tauri::WindowEvent::Moved(position) if window.label() == "character" => {
-                    save_position_debounced(&app, position.x, position.y);
+                    let (x, y) = clamp_character_position(&window, position.x, position.y);
+                    if x != position.x || y != position.y {
+                        let _ = window.set_position(tauri::PhysicalPosition::new(x, y));
+                    }
+                    save_position_debounced(&app, x, y);
                 }
                 _ => {}
             }
@@ -228,6 +232,28 @@ fn set_visible(app: &AppHandle, visible: bool) {
             }
         }
     }
+}
+
+fn clamp_character_position(window: &tauri::WebviewWindow, x: i32, y: i32) -> (i32, i32) {
+    let Ok(Some(monitor)) = window.current_monitor() else {
+        return (x, y);
+    };
+
+    let monitor_position = monitor.position();
+    let monitor_size = monitor.size();
+    let window_size = match window.outer_size() {
+        Ok(size) => size,
+        Err(_) => return (x, y),
+    };
+
+    let min_x = monitor_position.x;
+    let min_y = monitor_position.y;
+    let max_x = monitor_position.x
+        + monitor_size.width.saturating_sub(window_size.width) as i32;
+    let max_y = monitor_position.y
+        + monitor_size.height.saturating_sub(window_size.height) as i32;
+
+    (x.clamp(min_x, max_x), y.clamp(min_y, max_y))
 }
 
 fn save_position_debounced(app: &AppHandle, x: i32, y: i32) {
