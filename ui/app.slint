@@ -194,18 +194,18 @@ export component AppWindow inherits Window {
             Button { text: "Back"; clicked => { root.settings_open = false; } }
         }
         Text { text: "AI / Speech Providers"; font-size: 18px; }
-        Text { text: "AI provider (openai / groq / local)" ;
+        Text { text: "AI provider (openai / groq / local)"; }
         LineEdit { text: settings_ai_provider; edited => { root.settings_ai_provider = self.text; } }
-        Text { text: "STT provider (openai / groq / local)" ;
+        Text { text: "STT provider (openai / groq / local)"; }
         LineEdit { text: settings_stt_provider; edited => { root.settings_stt_provider = self.text; } }
-        Text { text: "TTS provider (openai / elevenlabs / local)" ;
+        Text { text: "TTS provider (openai / elevenlabs / local)"; }
         LineEdit { text: settings_tts_provider; edited => { root.settings_tts_provider = self.text; } }
-        Text { text: "OpenAI API key (Windows Credential Manager)" ;
+        Text { text: "OpenAI API key (Windows Credential Manager)"; }
         LineEdit { input-type: password; placeholder-text: "Enter OpenAI key"; edited => { root.settings_api_key = self.text; } }
         Text { text: settings_api_key_status; font-size: 12px; }
-        Text { text: "Groq API key (Windows Credential Manager)" ;
+        Text { text: "Groq API key (Windows Credential Manager)"; }
         LineEdit { input-type: password; placeholder-text: "Enter Groq key"; edited => { root.settings_groq_api_key = self.text; } }
-        Text { text: "ElevenLabs API key (Windows Credential Manager)" ;
+        Text { text: "ElevenLabs API key (Windows Credential Manager)"; }
         LineEdit { input-type: password; placeholder-text: "Enter ElevenLabs key"; edited => { root.settings_elevenlabs_api_key = self.text; } }
         Text { text: "AI model"; }
         LineEdit { text: settings_ai_model; edited => { root.settings_ai_model = self.text; } }
