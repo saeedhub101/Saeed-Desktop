@@ -101,3 +101,16 @@ Set the AI model field to `local` to use the local AI command adapter without an
 - `SAEED_LOCAL_AI_COMMAND`: local command that receives `{input}` as a UTF-8 JSON file containing the shared conversation and prints the assistant response to stdout.
 - Local AI, local STT, and local TTS can therefore form a complete offline voice path when their external local engines are installed and configured.
 - The adapters do not embed a heavyweight local model runtime in Saeed; the installed local engine remains responsible for inference.
+
+
+### Shared Conversation Persistence — Development Contract
+
+The shared Chat/Voice session is persisted in SQLite. On startup, Core restores the stored conversation; new Chat and Voice messages are appended to the same conversation store. Credential material remains in Windows Credential Manager and is never written to the conversation database.
+
+### On-Demand Tools — Development Contract
+
+`ToolRegistry` is the single tool-dispatch boundary. Tools are registered with the registry and executed only when requested. A tool must not create a permanent worker loop or a second Core/Agent owner.
+
+### 3D Runtime Direction
+
+The Character boundary owns procedural state and motion intent. The future GPU character renderer must consume those intents rather than creating a second animation controller. The renderer will be loaded only when the character is visible and must stop rendering work when the character is hidden.
