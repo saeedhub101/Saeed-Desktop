@@ -36,16 +36,64 @@ fn default_position(app: &AppHandle, width: u32) -> Position {
         if let Some(monitor) = monitors.first() {
             let work_area = monitor.work_area();
 
-            return Position {
-                x: work_area.position.x
-                    + ((work_area.size.width.saturating_sub(width)) / 2) as i32,
-                y: work_area.position.y
-                    + work_area.size.height.saturating_sub(width + 12) as i32,
-            };
+            return clamp_position(
+                Position {
+                    x: work_area.position.x
+                        + ((work_area.size.width.saturating_sub(width)) / 2) as i32,
+                    y: work_area.position.y
+                        + work_area.size.height.saturating_sub(width + 12) as i32,
+                },
+                &work_area,
+                width,
+            );
         }
     }
 
     Position { x: 100, y: 100 }
+}
+
+fn clamp_position(
+    app: &AppHandle,
+    desired: Position,
+    width: u32,
+) -> Position {
+    let Ok(monitors) = app.available_monitors() else {
+        return desired;
+    };
+
+    let monitor = monitors
+        .iter()
+        .find(|monitor| {
+            let area = monitor.work_area();
+            desired.x >= area.position.x
+                && desired.x < area.position.x + area.size.width as i32
+                && desired.y >= area.position.y
+                && desired.y < area.position.y + area.size.height as i32
+        })
+        .or_else(|| monitors.first());
+
+    let Some(monitor) = monitor else {
+        return desired;
+    };
+
+    let area = monitor.work_area();
+    clamp_to_work_area(desired, &area, width)
+}
+
+fn clamp_to_work_area(
+    desired: Position,
+    area: &tauri::PhysicalRect<i32, u32>,
+    width: u32,
+) -> Position {
+    let max_x = area.position.x
+        + area.size.width.saturating_sub(width) as i32;
+    let max_y = area.position.y
+        + area.size.height.saturating_sub(width) as i32;
+
+    Position {
+        x: desired.x.clamp(area.position.x, max_x.max(area.position.x)),
+        y: desired.y.clamp(area.position.y, max_y.max(area.position.y)),
+    }
 }
 
 pub fn create_character_window(app: &AppHandle) -> Result<(), String> {
@@ -76,7 +124,7 @@ pub fn create_character_window(app: &AppHandle) -> Result<(), String> {
     let position = if settings.character.position.x != -1
         || settings.character.position.y != -1
     {
-        settings.character.position
+        clamp_position(app, settings.character.position, width)
     } else {
         default_position(app, width)
     };
