@@ -102,17 +102,35 @@ impl CharacterRuntime {
 
     pub fn next_motion(&mut self) -> Option<MotionIntent> {
         if self.visibility != CharacterVisibility::Visible || self.paused { return None; }
-        let intent = match (self.state, self.action_index % 5) {
-            (CharacterState::Idle, 0) => MotionIntent { yaw: -0.10, pitch: 0.02, roll: 0.0, arm_wave: 0.0, duration_ms: 700 },
-            (CharacterState::Idle, 1) => MotionIntent { yaw: 0.10, pitch: -0.02, roll: 0.0, arm_wave: 0.0, duration_ms: 750 },
-            (CharacterState::Curious, _) => MotionIntent { yaw: 0.18, pitch: 0.10, roll: 0.0, arm_wave: 0.0, duration_ms: 650 },
-            (CharacterState::Playful, 0) => MotionIntent { yaw: -0.16, pitch: 0.06, roll: 0.04, arm_wave: 0.35, duration_ms: 800 },
-            (CharacterState::Playful, 1) => MotionIntent { yaw: 0.16, pitch: -0.04, roll: -0.04, arm_wave: -0.35, duration_ms: 800 },
-            (CharacterState::Interacting, _) => MotionIntent { yaw: 0.0, pitch: 0.05, roll: 0.0, arm_wave: 0.55, duration_ms: 900 },
-            (CharacterState::Tired, _) => MotionIntent { yaw: 0.0, pitch: -0.08, roll: 0.0, arm_wave: -0.12, duration_ms: 1100 },
-            (CharacterState::Sleeping, _) => MotionIntent { yaw: 0.0, pitch: -0.18, roll: 0.0, arm_wave: -0.20, duration_ms: 1400 },
-            (CharacterState::Waking, _) => MotionIntent { yaw: 0.0, pitch: 0.10, roll: 0.0, arm_wave: 0.20, duration_ms: 900 },
-            _ => MotionIntent::IDLE,
+        // Deterministic pseudo-random selection keeps the runtime dependency-free while
+        // avoiding a fixed animation sequence. The previous slot is never selected twice.
+        let mut x = self.action_index.wrapping_mul(747796405).wrapping_add(2891336453);
+        x ^= x >> 16;
+        x = x.wrapping_mul(2246822519);
+        let slot = ((x ^ (x >> 13)) % 4) as usize;
+        let intent = match self.state {
+            CharacterState::Idle => [
+                MotionIntent { yaw: -0.10, pitch: 0.02, roll: 0.0, arm_wave: 0.0, duration_ms: 900 },
+                MotionIntent { yaw: 0.10, pitch: -0.02, roll: 0.0, arm_wave: 0.0, duration_ms: 1050 },
+                MotionIntent { yaw: 0.0, pitch: 0.04, roll: 0.03, arm_wave: 0.0, duration_ms: 800 },
+                MotionIntent { yaw: -0.05, pitch: -0.05, roll: -0.02, arm_wave: 0.0, duration_ms: 1200 },
+            ][slot],
+            CharacterState::Curious => [
+                MotionIntent { yaw: 0.18, pitch: 0.10, roll: 0.0, arm_wave: 0.0, duration_ms: 850 },
+                MotionIntent { yaw: -0.18, pitch: 0.08, roll: 0.0, arm_wave: 0.0, duration_ms: 900 },
+                MotionIntent { yaw: 0.08, pitch: -0.06, roll: 0.02, arm_wave: 0.0, duration_ms: 1000 },
+                MotionIntent { yaw: -0.05, pitch: 0.12, roll: -0.02, arm_wave: 0.0, duration_ms: 750 },
+            ][slot],
+            CharacterState::Playful => [
+                MotionIntent { yaw: -0.16, pitch: 0.06, roll: 0.04, arm_wave: 0.35, duration_ms: 800 },
+                MotionIntent { yaw: 0.16, pitch: -0.04, roll: -0.04, arm_wave: -0.35, duration_ms: 850 },
+                MotionIntent { yaw: 0.0, pitch: 0.10, roll: 0.0, arm_wave: 0.65, duration_ms: 950 },
+                MotionIntent { yaw: 0.0, pitch: -0.05, roll: 0.0, arm_wave: -0.55, duration_ms: 900 },
+            ][slot],
+            CharacterState::Interacting => MotionIntent { yaw: 0.0, pitch: 0.05, roll: 0.0, arm_wave: 0.55, duration_ms: 900 },
+            CharacterState::Tired => MotionIntent { yaw: 0.0, pitch: -0.08, roll: 0.0, arm_wave: -0.12, duration_ms: 1200 },
+            CharacterState::Sleeping => MotionIntent { yaw: 0.0, pitch: -0.18, roll: 0.0, arm_wave: -0.20, duration_ms: 1500 },
+            CharacterState::Waking => MotionIntent { yaw: 0.0, pitch: 0.10, roll: 0.0, arm_wave: 0.20, duration_ms: 950 },
         };
         self.action_index = self.action_index.wrapping_add(1);
         Some(intent)
