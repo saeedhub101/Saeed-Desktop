@@ -111,7 +111,8 @@ pub fn run() {
             import_character,
             debug_rotate_once,
             hide_character,
-            show_character
+            show_character,
+            log_error
         ])
         .on_window_event(|window, event| {
             match event {
@@ -188,6 +189,11 @@ pub fn run() {
             eprintln!("Saeed failed to start: {error}");
         }
     }
+}
+
+#[tauri::command]
+fn log_error(state: State<'_, AppState>, message: String) {
+    state.logger.error(&message);
 }
 
 #[tauri::command]
