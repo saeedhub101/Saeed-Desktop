@@ -114,3 +114,11 @@ The shared Chat/Voice session is persisted in SQLite. On startup, Core restores 
 ### 3D Runtime Direction
 
 The Character boundary owns procedural state and motion intent. The future GPU character renderer must consume those intents rather than creating a second animation controller. The renderer will be loaded only when the character is visible and must stop rendering work when the character is hidden.
+
+### Character Runtime Boundary — Implementation
+
+- `src/character/mod.rs` contains the single `CharacterRuntime` owner for visibility, state, procedural motion and renderer lifetime.
+- `GlbCharacterRenderer` is a stateless rendering consumer: it receives `MotionIntent` and never owns character state, timers, or an animation loop.
+- The renderer is created lazily when Saeed becomes visible and is dropped when Saeed is hidden.
+- Rigged GLBs use `JOINTS_0`, `WEIGHTS_0`, skin inverse-bind matrices and detected bone names for procedural bone motion; unrigged GLBs still render as static/procedurally posed mesh geometry.
+- `src/app.rs` owns UI callback wiring; `src/main.rs` is only the application entry point and Slint module wiring.
