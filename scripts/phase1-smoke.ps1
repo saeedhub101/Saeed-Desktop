@@ -243,6 +243,14 @@ $rect2=Get-Rect $h
 Assert ([math]::Abs($rect2.Left-$rect1.Left) -ge 40) "drag" "center drag moved the window"
 $settings=Get-Content $settingsPath -Raw|ConvertFrom-Json
 Assert ([math]::Abs($settings.character.position.x-$rect2.Left) -le 5) "drag-persistence" "drop position persisted"
+$expectedLeft=$rect2.Left; $expectedTop=$rect2.Top
+Get-SaeedProcess | Stop-Process -Force
+Wait-Until { if((Get-SaeedProcess).Count -eq 0){$true}else{$null}} 10000 | Out-Null
+$proc=Start-Process $exe -PassThru
+$h=Wait-Until { $x=Get-WindowHandle; if($x -ne [IntPtr]::Zero){$x}else{$null}} 15000
+Assert $h "restart" "application restarted after persistence check"
+$rectRestart=Get-Rect $h
+Assert ([math]::Abs($rectRestart.Left-$expectedLeft) -le 8 -and [math]::Abs($rectRestart.Top-$expectedTop) -le 8) "position-persistence-restart" "saved character position restored after process restart"
 
 # Transparent corner must not drag the window.
 $rectBefore=Get-Rect $h
