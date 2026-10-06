@@ -60,7 +60,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         window.on_save_settings(move |api_key, ai_model, stt_model, tts_model, tts_voice| {
             let mut next = {
                 let Ok(current) = settings.lock() else {
-                    update_voice_ui(&weak, "Mic ON", "Settings state is unavailable.");
+                    if let Some(window) = weak.upgrade() {
+                        window.set_settings_status("Settings state is unavailable.".into());
+                    }
                     return;
                 };
                 current.clone()
@@ -225,6 +227,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 active.store(false, Ordering::Release);
                 window.set_voice_button_text("Mic ON".into());
                 window.set_status("Microphone off".into());
+                return;
+            }
+
+            let has_api_key = settings
+                .lock()
+                .map(|current| current.openai_api_key.is_some())
+                .unwrap_or(false);
+            if !has_api_key {
+                window.set_settings_open(true);
+                window.set_status("Add your OpenAI API key in Settings first.".into());
                 return;
             }
 
