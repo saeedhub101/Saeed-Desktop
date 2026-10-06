@@ -43,6 +43,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let storage = Storage::open_default()?;
     let settings = storage.load_settings()?;
     let settings = Arc::new(Mutex::new(settings));
+    window.set_settings_ai_model(settings.lock().unwrap().ai_model.clone().into());
+    window.set_settings_stt_model(settings.lock().unwrap().stt_model.clone().into());
+    window.set_settings_tts_model(settings.lock().unwrap().tts_model.clone().into());
+    window.set_settings_tts_voice(settings.lock().unwrap().tts_voice.clone().into());
+    if settings.lock().unwrap().openai_api_key.is_some() {
+        window.set_settings_api_key_status("API key saved in Windows Credential Manager".into());
+    }
     let core = Arc::new(Mutex::new(SaeedCore::new()));
     let voice_active = Arc::new(AtomicBool::new(false));
     let voice_worker_running = Arc::new(AtomicBool::new(false));
