@@ -9,9 +9,10 @@ export component AppWindow inherits Window {
 
     in-out property <string> status: "Ready";
     in-out property <string> conversation: "Saeed is ready. Chat and voice share one conversation.";
+    in-out property <string> voice_button_text: "Voice";
 
     callback send-message(string);
-    callback submit-voice-transcript(string);
+    callback toggle-voice();
 
     VerticalBox {
         padding: 28px;
@@ -61,16 +62,16 @@ export component AppWindow inherits Window {
                     }
 
                     Button {
-                        text: "Voice";
+                        text: voice_button_text;
                         clicked => {
-                            root.status = "Voice input will use this same conversation.";
+                            root.toggle-voice();
                         }
                     }
 
                     Button {
                         text: "Settings";
                         clicked => {
-                            root.status = "Set OPENAI_API_KEY, then restart Saeed.";
+                            root.status = "Settings will be connected to secure API-key storage next.";
                         }
                     }
                 }
