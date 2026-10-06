@@ -207,3 +207,18 @@ export component AppWindow inherits Window {
         Rectangle { vertical-stretch: 1; }
     }
 }
+
+
+export component SaeedTray inherits SystemTrayIcon {
+    icon: @image-url("tray.svg");
+    tooltip: "Saeed";
+    callback show-saeed();
+    callback hide-saeed();
+    callback exit-saeed();
+    clicked => { root.show-saeed(); }
+    Menu {
+        MenuItem { title: "Show Saeed"; activated => { root.show-saeed(); } }
+        MenuItem { title: "Hide Saeed"; activated => { root.hide-saeed(); } }
+        MenuItem { title: "Exit"; activated => { root.exit-saeed(); } }
+    }
+}
