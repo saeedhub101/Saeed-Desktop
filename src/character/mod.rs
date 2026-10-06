@@ -1,3 +1,5 @@
+pub mod asset;
+
 //! Lightweight character runtime boundary.
 //!
 //! Rendering is intentionally separate from motion state. The controller below
