@@ -225,6 +225,76 @@ export component AppWindow inherits Window {
 }
 
 
+
+export component CharacterWindow inherits Window {
+    title: "Saeed";
+    preferred-width: 360px;
+    preferred-height: 420px;
+    min-width: 280px;
+    min-height: 320px;
+    no-frame: true;
+    always-on-top: true;
+    background: #00000000;
+
+    in-out property <image> character_image;
+    in-out property <string> voice_button_text: "Mic ON";
+    in-out property <string> motion_button_text: "Pause";
+    in-out property <string> bubble_text: "Saeed is ready.";
+    callback drag-start();
+    callback drag-move(float, float);
+    callback toggle-character();
+    callback toggle-motion-pause();
+    callback toggle-voice();
+
+    Rectangle {
+        width: parent.width;
+        height: parent.height;
+        background: #00000000;
+
+        TouchArea {
+            width: parent.width;
+            height: parent.height;
+            mouse-cursor: grab;
+            pointer-event(event) => {
+                if (event.kind == PointerEventKind.down) { root.drag-start(); }
+            }
+            moved => {
+                if (self.pressed) {
+                    root.drag-move(self.mouse-x - self.pressed-x, self.mouse-y - self.pressed-y);
+                }
+            }
+        }
+
+        Image {
+            source: character_image;
+            width: 320px;
+            height: 320px;
+            x: 20px;
+            y: 38px;
+        }
+
+        Rectangle {
+            x: 18px;
+            y: 8px;
+            width: parent.width - 36px;
+            height: 34px;
+            border-radius: 17px;
+            background: #ffffffdd;
+            Text { text: bubble_text; horizontal-alignment: center; vertical-alignment: center; width: parent.width; }
+        }
+
+        HorizontalBox {
+            x: 35px;
+            y: 365px;
+            width: parent.width - 70px;
+            spacing: 6px;
+            Button { text: motion_button_text; clicked => { root.toggle-motion-pause(); } }
+            Button { text: voice_button_text; clicked => { root.toggle-voice(); } }
+            Button { text: "Hide"; clicked => { root.toggle-character(); } }
+        }
+    }
+}
+
 export component SaeedTray inherits SystemTrayIcon {
     icon: @image-url("tray.svg");
     tooltip: "Saeed";
