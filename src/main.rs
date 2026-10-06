@@ -226,6 +226,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let settings = Arc::clone(&settings);
         let core = Arc::clone(&core);
         let weak = window.as_weak();
+        let character_for_chat = Arc::clone(&character);
+        let renderer_for_chat = Arc::clone(&character_renderer);
 
         window.on_send_message(move |text: SharedString| {
             let text = text.trim().to_string();
