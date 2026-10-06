@@ -74,7 +74,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             if !is_recording {
                 match recorder.borrow_mut().start() {
                     Ok(()) => {
-                        window.set_voice_button_text("Stop");
+                        window.set_voice_button_text("Stop".into());
                         window.set_status("Listening…".into());
                     }
                     Err(error) => show_error(&window, error),
@@ -85,13 +85,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let audio = match recorder.borrow_mut().stop() {
                 Ok(audio) => audio,
                 Err(error) => {
-                    window.set_voice_button_text("Voice");
+                    window.set_voice_button_text("Voice".into());
                     show_error(&window, error);
                     return;
                 }
             };
 
-            window.set_voice_button_text("Voice");
+            window.set_voice_button_text("Voice".into());
             window.set_status("Transcribing…".into());
 
             let core = Arc::clone(&core);
