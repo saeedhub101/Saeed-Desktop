@@ -92,7 +92,7 @@ pub fn create_character_window(app: &AppHandle) -> Result<(), String> {
     let logical_x = f64::from(position.x) / scale_factor;
     let logical_y = f64::from(position.y) / scale_factor;
 
-    let icon = Image::from_app_icon_resource(32512).map_err(|e| e.to_string())?;
+    let icon = tauri::include_image!("./icons/32x32.png");
 
     let window = WebviewWindowBuilder::new(
         app,

@@ -97,7 +97,7 @@ fn menu(app: &AppHandle) -> tauri::Result<tauri::menu::Menu<tauri::Wry>> {
 
 pub fn install(app: &AppHandle) -> tauri::Result<()> {
     let menu = menu(app)?;
-    let icon = Image::from_app_icon_resource(32512)?;
+    let icon = tauri::include_image!("./icons/32x32.png");
 
     TrayIconBuilder::with_id("default")
         .icon(icon)
