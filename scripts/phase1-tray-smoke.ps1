@@ -19,6 +19,7 @@ using System;
 using System.Runtime.InteropServices;
 public static class TraySmokeWin32 {
  [DllImport("user32.dll",CharSet=CharSet.Unicode)] public static extern IntPtr FindWindow(string lpClassName,string lpWindowName);
+ [DllImport("user32.dll")] public static extern bool IsWindow(IntPtr hWnd);
  [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hWnd,out RECT rect);
  [DllImport("user32.dll")] public static extern bool SetCursorPos(int X,int Y);
  [DllImport("user32.dll")] public static extern void mouse_event(uint flags,uint dx,uint dy,uint data,UIntPtr extra);
@@ -31,10 +32,12 @@ public static class TraySmokeWin32 {
 
 function Get-WindowHandle {
   $h=[TraySmokeWin32]::FindWindow($null,"Saeed")
-  if($h -ne [IntPtr]::Zero){return $h}
+  if($h -ne [IntPtr]::Zero -and [TraySmokeWin32]::IsWindow($h)){return $h}
   $p=Get-SaeedProcess|Select-Object -First 1
   if(!$p){return [IntPtr]::Zero}
-  $p.Refresh(); return $p.MainWindowHandle
+  $p.Refresh(); $candidate=$p.MainWindowHandle
+  if($candidate -ne [IntPtr]::Zero -and [TraySmokeWin32]::IsWindow($candidate)){return $candidate}
+  return [IntPtr]::Zero
 }
 function ClickPoint([int]$x,[int]$y,[bool]$right=$false){
   [TraySmokeWin32]::SetCursorPos($x,$y)|Out-Null
@@ -58,6 +61,9 @@ function Get-MenuPopup {
   return [IntPtr]::Zero
 }
 
+Get-SaeedProcess | Stop-Process -Force -ErrorAction SilentlyContinue
+Wait-Until { if((Get-SaeedProcess).Count -eq 0){$true}else{$null}} 10000 | Out-Null
+Remove-Item "$env:APPDATA\Saeed" -Recurse -Force -ErrorAction SilentlyContinue
 Remove-Item $InstallDir -Recurse -Force -ErrorAction SilentlyContinue
 $installerPath=(Resolve-Path $Installer).Path
 Start-Process -FilePath $installerPath -ArgumentList @("/S","/D=$InstallDir") -Wait
