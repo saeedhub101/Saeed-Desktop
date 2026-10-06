@@ -355,6 +355,13 @@ pub(crate) fn import_character_core(
     Ok(id)
 }
 
+pub(crate) fn debug_rotate_once_core(app: AppHandle) -> Result<(), String> {
+    if let Some(window) = app.get_webview_window("character") {
+        window.emit("debug-rotate-once", ()).map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
 #[tauri::command]
 fn set_character_scale(
     app: AppHandle,
