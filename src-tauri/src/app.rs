@@ -144,7 +144,7 @@ pub(crate) fn create_character_window(app: &AppHandle) -> Result<(), String> {
         .clone();
 
     let size = character_size(settings.character.scale);
-    let mut builder = WebviewWindowBuilder::new(
+    let builder = WebviewWindowBuilder::new(
         app,
         "character",
         WebviewUrl::App("index.html".into()),
