@@ -9,7 +9,7 @@ use std::time::Duration;
 
 use saeed_desktop::ai::{AiProvider, AiRequest, LocalCommandAiProvider, OpenAiProvider};
 use saeed_desktop::core::SaeedCore;
-use saeed_desktop::character::{CharacterState, CharacterVisibility, GlbCharacterRenderer, ProceduralCharacterController};
+use saeed_desktop::character::{CharacterRuntime, CharacterState, CharacterVisibility};
 use saeed_desktop::storage::Storage;
 use saeed_desktop::voice::{MicrophoneRecorder, VoiceController};
 use slint::SharedString;
@@ -35,8 +35,7 @@ fn show_error(window: &AppWindow, message: String) {
     window.set_status("Error".into());
 }
 
-fn update_character_image(weak: &slint::Weak<AppWindow>, pixels: slint::SharedPixelBuffer<slint::Rgba8Pixel>) {
-    let weak = weak.clone();
+fn update_character_image(weak: slint::Weak<AppWindow>, pixels: slint::SharedPixelBuffer<slint::Rgba8Pixel>) {
     let _ = slint::invoke_from_event_loop(move || {
         if let Some(window) = weak.upgrade() {
             window.set_character_image(slint::Image::from_rgba8(pixels));
@@ -78,57 +77,49 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     if let Some(last) = persisted_messages.last() {
         window.set_conversation(format!("{}: {}", last.role, last.content).into());
     }
-    let character = Arc::new(Mutex::new(ProceduralCharacterController::new()));
-    if let Ok(mut character) = character.lock() {
-        character.set_visibility(CharacterVisibility::Visible);
-    }
-    let voice_active = Arc::new(AtomicBool::new(false));
-    let voice_worker_running = Arc::new(AtomicBool::new(false));
-    let character_renderer: Arc<Mutex<Option<GlbCharacterRenderer>>> = Arc::new(Mutex::new(None));
-
-    if let Some(path) = saeed_desktop::character::asset::find_default_asset() {
-        match GlbCharacterRenderer::from_path(&path, 520, 520) {
-            Ok(renderer) => {
-                let image = renderer.render(saeed_desktop::character::MotionIntent::IDLE);
-                window.set_character_image(slint::Image::from_rgba8(image));
-                *character_renderer.lock().unwrap() = Some(renderer);
-                window.set_status("Ready • 3D character loaded".into());
-            }
-            Err(error) => window.set_status(format!("Character load error: {error}").into()),
+    let character = Arc::new(Mutex::new(CharacterRuntime::new(520, 520)));
+    {
+        let mut runtime = character.lock().map_err(|_| "Character runtime is unavailable.")?;
+        runtime.set_visibility(CharacterVisibility::Visible)?;
+        if let Some(image) = runtime.render_idle()? {
+            window.set_character_image(slint::Image::from_rgba8(image));
+            window.set_status("Ready • 3D character loaded".into());
+        } else {
+            clear_character_image(&window);
         }
-    } else {
-        clear_character_image(&window);
     }
-
     let weak = window.as_weak();
 
     {
         let character = Arc::clone(&character);
-        let renderer = Arc::clone(&character_renderer);
         let weak = window.as_weak();
         window.on_toggle_character(move || {
-            let Ok(mut controller) = character.lock() else { return; };
-            let next = match controller.visibility() {
+            let Ok(mut runtime) = character.lock() else { return; };
+            let next = match runtime.visibility() {
                 CharacterVisibility::Visible => CharacterVisibility::Hidden,
                 CharacterVisibility::Hidden => CharacterVisibility::Visible,
             };
-            controller.set_visibility(next);
+            let result = runtime.set_visibility(next);
             let Some(window) = weak.upgrade() else { return; };
-            match next {
-                CharacterVisibility::Hidden => {
+            match (next, result) {
+                (CharacterVisibility::Hidden, Ok(())) => {
                     clear_character_image(&window);
                     window.set_character_button_text("Show Saeed".into());
-                    window.set_status("Saeed hidden • 3D renderer stopped".into());
+                    window.set_status("Saeed hidden • renderer unloaded".into());
                 }
-                CharacterVisibility::Visible => {
+                (CharacterVisibility::Visible, Ok(())) => {
                     window.set_character_button_text("Hide Saeed".into());
-                    if let Ok(renderer) = renderer.lock() {
-                        if let Some(renderer) = renderer.as_ref() {
-                            let image = renderer.render(saeed_desktop::character::MotionIntent::IDLE);
+                    match runtime.render_idle() {
+                        Ok(Some(image)) => {
                             window.set_character_image(slint::Image::from_rgba8(image));
+                            window.set_status("Saeed visible • 3D ready".into());
                         }
+                        Ok(None) => clear_character_image(&window),
+                        Err(error) => window.set_status(format!("Character load error: {error}").into()),
                     }
-                    window.set_status("Saeed visible • 3D renderer ready".into());
+                }
+                (_, Err(error)) => {
+                    window.set_status(format!("Character error: {error}").into());
                 }
             }
         });
@@ -227,8 +218,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let settings = Arc::clone(&settings);
         let core = Arc::clone(&core);
         let weak = window.as_weak();
-        let character_for_chat = Arc::clone(&character);
-        let renderer_for_chat = Arc::clone(&character_renderer);
 
         window.on_send_message(move |text: SharedString| {
             let text = text.trim().to_string();
@@ -245,14 +234,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             };
 
             let core = Arc::clone(&core);
-            let character = Arc::clone(&character_for_chat);
-            if let Ok(mut character) = character.lock() {
-                character.set_state(CharacterState::Interacting);
-            }
-            if let (Ok(mut controller), Ok(renderer)) = (character_for_chat.lock(), renderer_for_chat.lock()) {
-                if let Some(renderer) = renderer.as_ref() {
-                    let image = renderer.render(controller.next_motion().unwrap_or(saeed_desktop::character::MotionIntent::IDLE));
-                    update_character_image(&weak, image);
+            let character = Arc::clone(&character);
+            if let Ok(mut runtime) = character.lock() {
+                runtime.set_state(CharacterState::Interacting);
+                if let Ok(Some(image)) = runtime.render_next() {
+                    update_character_image(weak.clone(), image);
                 }
             }
             let weak = weak.clone();
