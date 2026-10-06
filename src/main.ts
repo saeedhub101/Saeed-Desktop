@@ -1,248 +1,194 @@
-import { listen } from "@tauri-apps/api/event";
+import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { invoke } from "@tauri-apps/api/core";
-import { getCurrentWindow } from "@tauri-apps/api/window";
+import * as THREE from "three";
+import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 
-import "./styles.css";
-import {
-  CharacterScene,
-  Settings,
-  sizes,
-} from "./character";
+type Settings = {
+  character: {
+    scale: "small" | "medium" | "large";
+    currentId: string;
+    alwaysOnTop: boolean;
+  };
+  performance: { lowPower: boolean };
+};
 
-const canvas =
-  document.querySelector<HTMLCanvasElement>(
-    "#character-canvas",
-  )!;
-const status =
-  document.querySelector<HTMLDivElement>("#status")!;
-const windowHandle = getCurrentWindow();
+const canvas = document.querySelector<HTMLCanvasElement>("#character-canvas")!;
+const status = document.querySelector<HTMLDivElement>("#status")!;
+const windowHandle = getCurrentWebviewWindow();
 
-let scene: CharacterScene | null = null;
-let statusTimer: number | undefined;
-let contextRecoveryAttempts = 0;
-let currentScale: keyof typeof sizes = "medium";
-let shuttingDown = false;
+let renderer: THREE.WebGLRenderer | null = null;
+let scene: THREE.Scene | null = null;
+let camera: THREE.PerspectiveCamera | null = null;
+let model: THREE.Object3D | null = null;
+let renderFrame = 0;
+let rotating = false;
+let disposed = false;
 
-type Probe = { x: number; y: number; width: number; height: number };
+function setStatus(message: string) {
+  status.textContent = message;
+  status.hidden = !message;
+}
 
-// Matches the window's initial set_ignore_cursor_events(false).
-let ignoringCursor = false;
-let lastProbe: Probe | null = null;
-
-function applyHitTest(): void {
-  if (!scene || !lastProbe) {
-    return;
-  }
-
-  const { x, y, width, height } = lastProbe;
-  const shouldIgnore = !scene.hitTest(x, y, width, height);
-
-  // Only talk to the OS when the state actually changes.
-  if (shouldIgnore === ignoringCursor) {
-    return;
-  }
-
-  ignoringCursor = shouldIgnore;
-  windowHandle.setIgnoreCursorEvents(shouldIgnore).catch(() => {
-    ignoringCursor = !shouldIgnore;
+function disposeObject(root: THREE.Object3D) {
+  root.traverse((object) => {
+    const mesh = object as THREE.Mesh;
+    if (mesh.geometry) mesh.geometry.dispose();
+    const material = (mesh as THREE.Mesh).material;
+    if (Array.isArray(material)) material.forEach(disposeMaterial);
+    else if (material) disposeMaterial(material);
   });
 }
 
-/** Releases all 3D resources; Rust waits for this before destroying the window. */
-function shutdownScene(): void {
-  shuttingDown = true;
-
-  if (statusTimer !== undefined) {
-    clearTimeout(statusTimer);
-  }
-
-  scene?.dispose();
-  scene = null;
-}
-
-function message(text: string, duration = 5000): void {
-  status.textContent = text;
-  status.classList.add("visible");
-
-  if (statusTimer !== undefined) {
-    clearTimeout(statusTimer);
-    statusTimer = undefined;
-  }
-
-  if (duration > 0) {
-    statusTimer = window.setTimeout(() => {
-      status.classList.remove("visible");
-      statusTimer = undefined;
-    }, duration);
+function disposeMaterial(material: THREE.Material) {
+  material.dispose();
+  for (const key of ["map", "normalMap", "roughnessMap", "metalnessMap", "emissiveMap", "aoMap", "alphaMap", "bumpMap"] as const) {
+    const value = material[key];
+    if (value && typeof value === "object" && "dispose" in value) (value as THREE.Texture).dispose();
   }
 }
 
-function resizeScene(size: number): void {
-  if (!scene) {
-    return;
+function disposeRenderer() {
+  if (model) {
+    disposeObject(model);
+    scene?.remove(model);
+    model = null;
   }
-
-  scene.renderer.setSize(size, size, false);
-  scene.scheduler.requestRender();
+  if (renderer) {
+    renderer.dispose();
+    renderer.forceContextLoss();
+    renderer.domElement.width = 1;
+    renderer.domElement.height = 1;
+    renderer = null;
+  }
+  if (renderFrame) cancelAnimationFrame(renderFrame);
+  renderFrame = 0;
 }
 
-function installContextRecovery(): void {
-  canvas.addEventListener(
-    "webglcontextlost",
-    (event) => {
-      event.preventDefault();
-
-      // Context loss caused by our own cleanup must not trigger recovery.
-      if (shuttingDown) {
-        return;
-      }
-
-      if (contextRecoveryAttempts >= 1) {
-        message(
-          "WebGL context could not be recovered.",
-        );
-        return;
-      }
-
-      contextRecoveryAttempts += 1;
-      message(
-        "WebGL context lost. Recreating the renderer...",
-      );
-
-      try {
-        scene?.recreateRenderer();
-        void scene?.load().then(() => {
-          contextRecoveryAttempts = 0;
-        }).catch((error) => {
-          console.error(error);
-          message(
-            "Saeed could not load the character model.",
-            0,
-          );
-        });
-      } catch (error) {
-        console.error(error);
-        message(
-          "Saeed could not recover the WebGL renderer.",
-        );
-      }
-    },
-    { passive: false },
-  );
-}
-
-async function init(): Promise<void> {
-  const settings =
-    await invoke<Settings>("get_settings");
-
-  scene = new CharacterScene(
-    canvas,
-    settings.performance.lowPower,
-  );
-
-  currentScale = settings.character.scale;
-  resizeScene(sizes[currentScale]);
-
-  installContextRecovery();
-
-  scene.onMaskUpdated = applyHitTest;
-
-  await listen<Probe>("cursor-probe", (event) => {
-    lastProbe = event.payload;
-    applyHitTest();
-  });
-
-  await listen("prepare-destroy", async () => {
-    try {
-      shutdownScene();
-    } catch (error) {
-      console.error(error);
-    } finally {
-      await invoke("character_cleanup_done");
+function requestRender(active = false) {
+  if (disposed || !renderer || !scene || !camera || renderFrame) return;
+  const started = performance.now();
+  const tick = (now: number) => {
+    renderFrame = 0;
+    if (disposed || !renderer || !scene || !camera) return;
+    renderer.render(scene, camera);
+    if (active && now - started < 2000) {
+      renderFrame = requestAnimationFrame(tick);
     }
-  });
+  };
+  renderFrame = requestAnimationFrame(tick);
+}
 
-  canvas.addEventListener(
-    "pointerdown",
-    (event) => {
-      const rect = canvas.getBoundingClientRect();
-      const x = event.clientX - rect.left;
-      const y = event.clientY - rect.top;
+function fitModel() {
+  if (!model || !camera || !renderer) return;
+  const box = new THREE.Box3().setFromObject(model);
+  if (box.isEmpty()) return;
+  const size = box.getSize(new THREE.Vector3());
+  const center = box.getCenter(new THREE.Vector3());
+  model.position.sub(center);
+  const max = Math.max(size.x, size.y, size.z);
+  const fov = THREE.MathUtils.degToRad(camera.fov);
+  const distance = (max / 2) / Math.tan(fov / 2) * 1.25;
+  camera.position.set(0, 0, Math.max(distance, 1));
+  camera.near = Math.max(0.01, camera.position.z / 100);
+  camera.far = camera.position.z * 100;
+  camera.updateProjectionMatrix();
+  requestRender();
+}
 
-      // Cursor pass-through is controlled by the native hit-test state. If a
-      // pointer reaches the canvas it is therefore a real character hit, so
-      // startDragging must not repeat the renderer alpha test here (which can
-      // be one frame behind the visible model).
-      void windowHandle.startDragging();
-    },
-  );
+async function load() {
+  disposed = false;
+  const settings = await invoke<Settings>("get_settings");
+  renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true, powerPreference: settings.performance.lowPower ? "low-power" : "high-performance" });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, settings.performance.lowPower ? 1 : 2));
+  renderer.setSize(window.innerWidth, window.innerHeight, false);
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
 
-  await listen<boolean>(
-    "renderer-recreate",
-    (event) => {
-      if (!scene) {
-        return;
-      }
+  scene = new THREE.Scene();
+  camera = new THREE.PerspectiveCamera(28, Math.max(0.1, innerWidth / innerHeight), 0.01, 1000);
+  camera.position.z = 3;
 
-      scene.setLowPower(event.payload);
-      resizeScene(sizes[currentScale]);
-    },
-  );
+  scene.add(new THREE.HemisphereLight(0xffffff, 0x444444, 2));
+  const key = new THREE.DirectionalLight(0xffffff, 2);
+  key.position.set(2, 4, 3);
+  scene.add(key);
 
-  await listen(
-    "debug-rotate-once",
-    () => scene?.rotateOnce(),
-  );
-
-  await listen(
-    "character-reload",
-    () => {
-      const size = window.innerWidth;
-      currentScale = size <= sizes.small ? "small" : size <= sizes.medium ? "medium" : "large";
-      resizeScene(size);
-      return scene?.load().catch((error) => {
-        console.error(error);
-        const detail = error instanceof Error ? error.message : String(error);
-        void invoke("log_error", {
-          message: detail.includes("GLB load failed") ? detail : `GLB load failed: ${detail}`,
-        });
-        message(
-          "Saeed could not load the character model.",
-          0,
-        );
-      });
-    },
-  );
+  const bytes = await invoke<number[]>("get_character_model");
+  if (!bytes.length) {
+    setStatus("No character model. Choose Change Character from the Saeed tray menu.");
+    requestRender();
+    return;
+  }
 
   try {
-    await scene.load();
-    scene.scheduler.requestRender();
+    const buffer = new Uint8Array(bytes).buffer;
+    const gltf = await new GLTFLoader().parseAsync(buffer, "");
+    model = gltf.scene;
+    scene.add(model);
+    setStatus("");
+    fitModel();
   } catch (error) {
-    console.error(error);
-    void invoke("log_error", {
-      message: String(error),
-    });
-    message(
-      "Saeed could not load the character model.",
-      0,
-    );
+    setStatus("Unable to load this GLB.");
+    await invoke("log_error", { message: String(error) }).catch(() => {});
+    requestRender();
   }
 }
 
-window.addEventListener("beforeunload", () => shutdownScene());
+async function recreate(lowPower: boolean) {
+  disposeRenderer();
+  const settings = await invoke<Settings>("get_settings");
+  settings.performance.lowPower = lowPower;
+  await load();
+}
 
 window.addEventListener("resize", () => {
-  const size = window.innerWidth;
-  currentScale = size <= sizes.small ? "small" : size <= sizes.medium ? "medium" : "large";
-  resizeScene(size);
+  if (!renderer || !camera) return;
+  renderer.setSize(innerWidth, innerHeight, false);
+  camera.aspect = Math.max(0.1, innerWidth / innerHeight);
+  camera.updateProjectionMatrix();
+  fitModel();
 });
 
-void init().catch((error) => {
-  console.error(error);
-  void invoke("log_error", {
-    message: String(error),
-  });
-  message(
-    "Saeed could not initialize the character window.",
-  );
+window.addEventListener("pointerdown", async () => {
+  if (!model) return;
+  await windowHandle.startDragging().catch(() => {});
 });
+
+windowHandle.listen("debug-rotate-once", () => {
+  if (!model || rotating) return;
+  rotating = true;
+  const start = performance.now();
+  const original = model.rotation.y;
+  const animate = (now: number) => {
+    if (!model || disposed) { rotating = false; return; }
+    const t = Math.min(1, (now - start) / 2000);
+    model.rotation.y = original + Math.PI * 2 * (t * t * (3 - 2 * t));
+    renderer?.render(scene!, camera!);
+    if (t < 1) requestAnimationFrame(animate);
+    else { rotating = false; requestRender(); }
+  };
+  requestAnimationFrame(animate);
+});
+
+windowHandle.listen("character-reload", async () => {
+  disposeRenderer();
+  await load();
+});
+
+windowHandle.listen("character-refit", () => fitModel());
+
+windowHandle.listen("renderer-recreate", async (event) => {
+  await recreate(Boolean(event.payload));
+});
+
+windowHandle.listen("prepare-destroy", async () => {
+  disposeRenderer();
+  disposed = true;
+  await invoke("character_cleanup_done").catch(() => {});
+});
+
+window.addEventListener("beforeunload", () => {
+  disposed = true;
+  disposeRenderer();
+});
+
+void load();
