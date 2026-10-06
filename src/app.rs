@@ -154,6 +154,9 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
                 }
                 (CharacterVisibility::Visible, Ok(())) => {
                     window.set_character_button_text("Hide Saeed".into());
+                    if !runtime.is_paused() {
+                        schedule_character_action(Arc::clone(&character), weak.clone(), Duration::from_millis(900));
+                    }
                     match runtime.render_idle() {
                         Ok(Some(image)) => {
                             window.set_character_image(slint::Image::from_rgba8(image));
@@ -188,6 +191,9 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
                 window.set_motion_button_text(if paused { "Resume Motion" } else { "Pause Motion" }.into());
                 window.set_status(if paused { "Motion paused • manual/rest pose active" } else { "Motion resumed • procedural behavior active" }.into());
                 if let Ok(Some(image)) = runtime.render_idle() { window.set_character_image(slint::Image::from_rgba8(image)); }
+                if !paused {
+                    schedule_character_action(Arc::clone(&character), weak.clone(), Duration::from_millis(500));
+                }
             }
         });
     }
