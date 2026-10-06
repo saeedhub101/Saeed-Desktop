@@ -33,7 +33,7 @@ pub struct AppState {
 }
 
 pub(crate) fn data_dir(app: &AppHandle) -> Result<PathBuf, String> {
-    let old_dir = data_dir(app).map_err(|e| e.to_string())?;
+    let old_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
     let parent = old_dir
         .parent()
         .ok_or_else(|| "Unable to resolve APPDATA directory".to_string())?;
