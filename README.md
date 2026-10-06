@@ -25,6 +25,10 @@ The application is intentionally split into independent boundaries:
 
 The Core is the single application orchestrator. There must not be multiple competing Brain/Core runtimes.
 
+## Prototype
+
+The first Windows prototype is packaged by GitHub Actions as a self-contained Saeed.exe inside the workflow artifact.
+
 ## Development
 
 This repository is being built from scratch. Features are added incrementally and measured before unnecessary runtime dependencies are introduced.
