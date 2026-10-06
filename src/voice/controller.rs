@@ -51,10 +51,15 @@ impl VoiceController {
 
             core.add_voice_message("user", &transcript);
 
-            let api_key = settings.openai_api_key.clone()
-                .ok_or_else(|| "AI currently requires an OpenAI API key.".to_string())?;
-            let ai = OpenAiProvider::from_config(api_key, settings.ai_model)?;
-            core.complete_voice(&ai)?.text
+            if settings.ai_model.trim().eq_ignore_ascii_case("local") {
+                let ai = LocalCommandAiProvider::from_environment()?;
+                core.complete_voice(&ai)?.text
+            } else {
+                let api_key = settings.openai_api_key.clone()
+                    .ok_or_else(|| "OpenAI AI selected: add your OpenAI API key in Settings.".to_string())?;
+                let ai = OpenAiProvider::from_config(api_key, settings.ai_model)?;
+                core.complete_voice(&ai)?.text
+            }
         };
 
         Ok(VoiceTurnResult { transcript, response })
