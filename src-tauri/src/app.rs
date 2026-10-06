@@ -3,7 +3,7 @@ use std::{
     path::PathBuf,
     sync::{
         atomic::{AtomicU64, Ordering},
-        Mutex,
+        mpsc, Mutex,
     },
     thread,
     time::{Duration, SystemTime, UNIX_EPOCH},
@@ -21,13 +21,20 @@ use crate::{
     logging::Logger,
     settings::{AppSettings, CharacterScale},
     tray,
-    windows_mgr,
+    windows_mgr::{self, HideState},
 };
 
 pub struct AppState {
     pub settings: Mutex<AppSettings>,
     pub logger: Logger,
     pub position_generation: AtomicU64,
+    /// Sender the renderer's "cleanup done" acknowledgement is delivered through
+    /// while a hide handshake is in progress.
+    pub cleanup_ack: Mutex<Option<mpsc::Sender<()>>>,
+    /// Generation id of the cursor probe thread that is allowed to run.
+    pub probe_generation: AtomicU64,
+    /// Tracks an in-flight hide so Show during a Hide is not lost.
+    pub hide_state: Mutex<HideState>,
 }
 
 pub(crate) fn data_dir(app: &AppHandle) -> Result<PathBuf, String> {
@@ -52,7 +59,7 @@ pub fn run() {
             let _ = windows_mgr::show_character(app);
         }))
         .setup(|app| {
-            let data_dir = data_dir(&app.handle())?;
+            let data_dir = data_dir(app.handle())?;
             fs::create_dir_all(&data_dir)?;
 
             let logger = Logger::new(&data_dir)?;
@@ -65,39 +72,16 @@ pub fn run() {
                 settings: Mutex::new(settings.clone()),
                 logger,
                 position_generation: AtomicU64::new(0),
+                cleanup_ack: Mutex::new(None),
+                probe_generation: AtomicU64::new(0),
+                hide_state: Mutex::new(HideState::Idle),
             });
 
-            tray::install(&app.handle())?;
+            tray::install(app.handle())?;
 
             if settings.character.visible {
-                windows_mgr::create_character_window(&app.handle())?;
+                windows_mgr::create_character_window(app.handle())?;
             }
-
-            let cursor_app = app.handle().clone();
-            thread::spawn(move || loop {
-                if let Some(window) = cursor_app.get_webview_window("character") {
-                    if let (Ok(cursor), Ok(position), Ok(size)) = (
-                        window.cursor_position(),
-                        window.inner_position(),
-                        window.inner_size(),
-                    ) {
-                        let x = cursor.x - f64::from(position.x);
-                        let y = cursor.y - f64::from(position.y);
-
-                        let _ = window.emit(
-                            "cursor-probe",
-                            serde_json::json!({
-                                "x": x,
-                                "y": y,
-                                "width": size.width,
-                                "height": size.height
-                            }),
-                        );
-                    }
-                }
-
-                thread::sleep(Duration::from_millis(50));
-            });
 
             Ok(())
         })
@@ -110,24 +94,20 @@ pub fn run() {
             debug_rotate_once,
             hide_character,
             show_character,
+            character_cleanup_done,
             log_error
         ])
         .on_window_event(|window, event| {
             match event {
-                tauri::WindowEvent::CloseRequested { .. } => {
-                    let app = window.app_handle();
-                    if let Some(state) = app.try_state::<AppState>() {
-                        if let Ok(mut settings) = state.settings.lock() {
-                            settings.character.visible = false;
-                            if let Ok(dir) = data_dir(&app) {
-                                let _ = settings.save(&dir);
-                            }
-                            state.logger.info("Character window hidden by user close");
-                        }
+                tauri::WindowEvent::CloseRequested { api, .. } => {
+                    if window.label() != "character" {
+                        return;
                     }
 
-                    let _ = windows_mgr::destroy_character_window(&app);
-                    tray::refresh(&app);
+                    // Never let the OS tear the window down directly: run the
+                    // renderer cleanup handshake first, then destroy.
+                    api.prevent_close();
+                    windows_mgr::hide_character(window.app_handle());
                 }
                 tauri::WindowEvent::Moved(position) => {
                     if window.label() != "character" {
@@ -253,6 +233,7 @@ pub(crate) fn set_low_power(
 
     settings.performance.low_power = enabled;
     settings.save(&dir)?;
+    drop(settings);
     state.logger.info(&format!("Low Power Mode set to {enabled}"));
 
     if let Some(window) = app.get_webview_window("character") {
@@ -344,21 +325,20 @@ fn debug_rotate_once(app: AppHandle) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn hide_character(app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
-    windows_mgr::destroy_character_window(&app)?;
-
-    let dir = data_dir(&app)?;
-    let mut settings = state
-        .settings
-        .lock()
-        .map_err(|_| "settings lock".to_string())?;
-
-    settings.character.visible = false;
-    settings.save(&dir)?;
-    state.logger.info("Character window hidden");
-    tray::refresh(&app);
-
+fn hide_character(app: AppHandle) -> Result<(), String> {
+    // Runs the cleanup handshake on a worker thread so the main/UI thread
+    // stays free to deliver the page's acknowledgement.
+    windows_mgr::hide_character(&app);
     Ok(())
+}
+
+#[tauri::command]
+fn character_cleanup_done(state: State<'_, AppState>) {
+    if let Ok(mut slot) = state.cleanup_ack.lock() {
+        if let Some(sender) = slot.take() {
+            let _ = sender.send(());
+        }
+    }
 }
 
 #[tauri::command]
@@ -373,6 +353,7 @@ fn show_character(app: AppHandle, state: State<'_, AppState>) -> Result<(), Stri
 
     settings.character.visible = true;
     settings.save(&dir)?;
+    drop(settings);
     state.logger.info("Character window shown");
     tray::refresh(&app);
 
@@ -395,11 +376,8 @@ pub fn tray_import_character(
     import_character(app, source, state)
 }
 
-pub fn tray_hide_character(
-    app: AppHandle,
-    state: State<'_, AppState>,
-) -> Result<(), String> {
-    hide_character(app, state)
+pub fn tray_hide_character(app: AppHandle) -> Result<(), String> {
+    hide_character(app)
 }
 
 pub fn tray_debug_rotate_once(app: AppHandle) -> Result<(), String> {
