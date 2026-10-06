@@ -86,6 +86,17 @@ function Find-Element([string]$Name,[int]$TimeoutMs=5000,[System.Windows.Automat
     $root.FindFirst([System.Windows.Automation.TreeScope]::Descendants,$cond)
   } $TimeoutMs
 }
+function Find-ElementByAutomationId([string]$AutomationId,[int]$TimeoutMs=5000,[System.Windows.Automation.ControlType]$Type=$null) {
+  Wait-Until {
+    $root=[System.Windows.Automation.AutomationElement]::RootElement
+    $ac=New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::AutomationIdProperty,$AutomationId)
+    if($Type){
+      $tc=New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::ControlTypeProperty,$Type)
+      $cond=New-Object System.Windows.Automation.AndCondition($ac,$tc)
+    } else {$cond=$ac}
+    $root.FindFirst([System.Windows.Automation.TreeScope]::Descendants,$cond)
+  } $TimeoutMs
+}
 function Invoke-UIA([System.Windows.Automation.AutomationElement]$e) {
   if($null -eq $e){ throw "UIA element is null" }
   $pattern=$null
@@ -322,15 +333,19 @@ Open-TrayMenu; Invoke-Menu "Low Power Mode"; Start-Sleep -Seconds 1
 $valid=Join-Path $env:RUNNER_TEMP "phase1-valid.glb"
 Make-TestGlb $valid
 Open-TrayMenu; Invoke-Menu "Change Character..."
-$edit=Wait-Until {
-  $root=[System.Windows.Automation.AutomationElement]::RootElement
-  $tc=New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::ControlTypeProperty,[System.Windows.Automation.ControlType]::Edit)
-  $root.FindFirst([System.Windows.Automation.TreeScope]::Descendants,$tc)
-} 8000
+$edit=Find-ElementByAutomationId "1148" 4000 ([System.Windows.Automation.ControlType]::Edit)
+if(!$edit){
+  $edit=Wait-Until {
+    $root=[System.Windows.Automation.AutomationElement]::RootElement
+    $tc=New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::ControlTypeProperty,[System.Windows.Automation.ControlType]::Edit)
+    $root.FindFirst([System.Windows.Automation.TreeScope]::Descendants,$tc)
+  } 4000
+}
 Assert $edit "change-character-dialog" "native file dialog appeared"
 $vp=$null
 if($edit){ try { $hasValue=$edit.TryGetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern,[ref]$vp); Assert $hasValue "change-character-input" "file dialog filename field exposes ValuePattern"; if($hasValue){$vp.SetValue($valid)} } catch { Record-Exception "change-character-input" $_ } } else { Fail "change-character-input" "file dialog edit control was not found" }
-$open=Find-Element "Open" 5000 ([System.Windows.Automation.ControlType]::Button)
+$open=Find-ElementByAutomationId "1" 3000 ([System.Windows.Automation.ControlType]::Button)
+if(!$open){ $open=Find-Element "Open" 3000 ([System.Windows.Automation.ControlType]::Button) }
 Assert $open "change-character-open" "native Open button found"
 if($open){ try { Invoke-UIA $open } catch { Record-Exception "change-character-open" $_ } }
 Start-Sleep -Seconds 3
