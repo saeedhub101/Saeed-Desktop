@@ -23,6 +23,8 @@ public static class Win32Input {
 "@
 
 $results = [ordered]@{}
+$script:CurrentTest = "setup"
+trap { Write-Host "FAIL: $script:CurrentTest - $($_.Exception.Message)" -ForegroundColor Red; $results[$script:CurrentTest] = "FAIL - $($_.Exception.Message)"; continue }
 function Pass($name,$note="") { $results[$name] = "PASS" + $(if($note){" - $note"}else{""}); Write-Host "PASS: $name $note" -ForegroundColor Green }
 function Fail($name,$note) { $results[$name] = "FAIL - $note"; Write-Host "FAIL: $name - $note" -ForegroundColor Red }
 function Assert($condition,$name,$note) { if($condition){Pass $name $note}else{Fail $name $note} }
@@ -373,3 +375,7 @@ $exited=Wait-Until { if((Get-SaeedProcess).Count -eq 0){$true}else{$null}} 10000
 Assert $exited "quit-clean" "tray Quit exited cleanly with no Saeed process"
 
 $results | ConvertTo-Json -Depth 4 | Tee-Object "$env:RUNNER_TEMP\phase1-results.json"
+$failed = @($results.GetEnumerator() | Where-Object { $_.Value -like "FAIL*" })
+Write-Host "PHASE 1 TEST SUMMARY: $($results.Count) checks, $($failed.Count) failed" -ForegroundColor $(if($failed.Count){ "Red" } else { "Green" })
+if($failed.Count -gt 0){ $failed | ForEach-Object { Write-Host " - $($_.Key): $($_.Value)" -ForegroundColor Red }; exit 1 }
+exit 0
