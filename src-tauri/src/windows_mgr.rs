@@ -1,12 +1,6 @@
 use std::{sync::mpsc, thread, time::Duration};
 
-use tauri::{
-    AppHandle,
-    Emitter,
-    Manager,
-    WebviewUrl,
-    WebviewWindowBuilder,
-};
+use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
 
 use crate::app::AppState;
 use crate::settings::{CharacterScale, Position};
@@ -43,7 +37,7 @@ fn default_position(app: &AppHandle, width: u32) -> Position {
                     y: work_area.position.y
                         + work_area.size.height.saturating_sub(width + 12) as i32,
                 },
-                &work_area,
+                work_area,
                 width,
             );
         }
@@ -52,11 +46,7 @@ fn default_position(app: &AppHandle, width: u32) -> Position {
     Position { x: 100, y: 100 }
 }
 
-fn clamp_position(
-    app: &AppHandle,
-    desired: Position,
-    width: u32,
-) -> Position {
+fn clamp_position(app: &AppHandle, desired: Position, width: u32) -> Position {
     let Ok(monitors) = app.available_monitors() else {
         return desired;
     };
@@ -77,7 +67,7 @@ fn clamp_position(
     };
 
     let area = monitor.work_area();
-    clamp_to_work_area(desired, &area, width)
+    clamp_to_work_area(desired, area, width)
 }
 
 fn clamp_to_work_area(
@@ -85,10 +75,8 @@ fn clamp_to_work_area(
     area: &tauri::PhysicalRect<i32, u32>,
     width: u32,
 ) -> Position {
-    let max_x = area.position.x
-        + area.size.width.saturating_sub(width) as i32;
-    let max_y = area.position.y
-        + area.size.height.saturating_sub(width) as i32;
+    let max_x = area.position.x + area.size.width.saturating_sub(width) as i32;
+    let max_y = area.position.y + area.size.height.saturating_sub(width) as i32;
 
     Position {
         x: desired.x.clamp(area.position.x, max_x.max(area.position.x)),
@@ -121,9 +109,7 @@ pub fn create_character_window(app: &AppHandle) -> Result<(), String> {
         .clone();
 
     let width = size(settings.character.scale);
-    let position = if settings.character.position.x != -1
-        || settings.character.position.y != -1
-    {
+    let position = if settings.character.position.x != -1 || settings.character.position.y != -1 {
         clamp_position(app, settings.character.position, width)
     } else {
         default_position(app, width)
@@ -141,11 +127,7 @@ pub fn create_character_window(app: &AppHandle) -> Result<(), String> {
 
     let icon = tauri::include_image!("./icons/32x32.png");
 
-    let window = WebviewWindowBuilder::new(
-        app,
-        "character",
-        WebviewUrl::App("index.html".into()),
-    )
+    let window = WebviewWindowBuilder::new(app, "character", WebviewUrl::App("index.html".into()))
     .title("Saeed")
     .inner_size(logical_width, logical_width)
     .position(logical_x, logical_y)
