@@ -87,14 +87,6 @@ export component AppWindow inherits Window {
                     }
 
                     Button {
-                        text: "Send";
-                        clicked => {
-                            root.send-message(message-input.text);
-                            message-input.text = "";
-                        }
-                    }
-
-                    Button {
                         text: voice_button_text;
                         clicked => { root.toggle-voice(); }
                     }
