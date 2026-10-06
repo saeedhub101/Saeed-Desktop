@@ -126,7 +126,7 @@ pub fn install(app: &AppHandle) -> tauri::Result<()> {
                     settings.character.always_on_top =
                         !settings.character.always_on_top;
 
-                    if let Ok(dir) = app.path().app_data_dir() {
+                    if let Ok(dir) = crate::app::data_dir(app) {
                         let _ = settings.save(&dir);
                     }
 
