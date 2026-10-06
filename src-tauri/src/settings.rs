@@ -35,7 +35,6 @@ pub enum CharacterScale {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub struct PerformanceSettings {
     pub low_power: bool,
 }
@@ -82,15 +81,19 @@ impl AppSettings {
         )
         .map_err(|e| e.to_string())?;
 
+        // Windows requires a writable handle for FlushFileBuffers/sync_all.
+        // Opening the temp file read-only causes ERROR_ACCESS_DENIED (os error 5)
+        // and makes Tauri abort startup while saving settings.
         fs::OpenOptions::new()
             .read(true)
+            .write(true)
             .open(&temp)
             .map_err(|e| e.to_string())?
             .sync_all()
             .map_err(|e| e.to_string())?;
 
         if path.exists() {
-            let _ = fs::remove_file(&path);
+            fs::remove_file(&path).map_err(|e| e.to_string())?;
         }
 
         fs::rename(temp, path).map_err(|e| e.to_string())
