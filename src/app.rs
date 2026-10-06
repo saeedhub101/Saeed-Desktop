@@ -69,6 +69,9 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     window.set_settings_stt_model(settings.lock().unwrap().stt_model.clone().into());
     window.set_settings_tts_model(settings.lock().unwrap().tts_model.clone().into());
     window.set_settings_tts_voice(settings.lock().unwrap().tts_voice.clone().into());
+    if settings.lock().unwrap().character_paused {
+        window.set_motion_button_text("Resume Motion".into());
+    }
     if settings.lock().unwrap().openai_api_key.is_some() {
         window.set_settings_api_key_status("API key saved in Windows Credential Manager".into());
     }
@@ -135,6 +138,109 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
                 (_, Err(error)) => {
                     window.set_status(format!("Character error: {error}").into());
                 }
+            }
+        });
+    }
+
+    {
+        let character = Arc::clone(&character);
+        let settings = Arc::clone(&settings);
+        let weak = window.as_weak();
+        window.on_toggle_motion_pause(move || {
+            let Ok(mut runtime) = character.lock() else { return; };
+            let paused = !runtime.is_paused();
+            runtime.set_paused(paused);
+            let mut next_settings = settings.lock().ok().map(|s| s.clone());
+            if let Some(ref mut s) = next_settings { s.character_paused = paused; }
+            if let Some(s) = next_settings {
+                if let Ok(storage) = Storage::open_default() { let _ = storage.save_settings(&s); }
+                if let Ok(mut current) = settings.lock() { *current = s; }
+            }
+            if let Some(window) = weak.upgrade() {
+                window.set_motion_button_text(if paused { "Resume Motion" } else { "Pause Motion" }.into());
+                window.set_status(if paused { "Motion paused • manual/rest pose active" } else { "Motion resumed • procedural behavior active" }.into());
+                if let Ok(Some(image)) = runtime.render_idle() { window.set_character_image(slint::Image::from_rgba8(image)); }
+            }
+        });
+    }
+
+    {
+        let character = Arc::clone(&character);
+        let weak = window.as_weak();
+        window.on_set_character_state(move |state: SharedString| {
+            let state = match state.as_str() {
+                "Curious" => CharacterState::Curious,
+                "Playful" => CharacterState::Playful,
+                "Tired" => CharacterState::Tired,
+                "Sleeping" => CharacterState::Sleeping,
+                "Waking" => CharacterState::Waking,
+                _ => CharacterState::Idle,
+            };
+            if let Ok(mut runtime) = character.lock() {
+                runtime.set_state(state);
+                if let Ok(Some(image)) = runtime.render_next() { update_character_image(weak.clone(), image); }
+                if let Some(window) = weak.upgrade() { window.set_character_state_text(format!("{state:?}").into()); }
+            }
+        });
+    }
+
+    {
+        let character = Arc::clone(&character);
+        let weak = window.as_weak();
+        window.on_apply_pose(move |yaw, pitch, roll, arm| {
+            let parse = |v: &str| v.trim().parse::<f32>().map_err(|_| format!("Invalid pose value: {v}"));
+            let values = (parse(yaw.as_str()), parse(pitch.as_str()), parse(roll.as_str()), parse(arm.as_str()));
+            match values {
+                (Ok(y), Ok(p), Ok(r), Ok(a)) => {
+                    if let Ok(mut runtime) = character.lock() {
+                        runtime.set_manual_pose(y, p, r, a);
+                        runtime.set_paused(true);
+                        if let Ok(Some(image)) = runtime.render_idle() { update_character_image(weak.clone(), image); }
+                    }
+                    if let Some(window) = weak.upgrade() { window.set_motion_button_text("Resume Motion".into()); window.set_status("Manual pose applied and motion paused.".into()); }
+                }
+                _ => { if let Some(window) = weak.upgrade() { window.set_status("Pose values must be valid numbers.".into()); } }
+            }
+        });
+    }
+
+    {
+        let character = Arc::clone(&character);
+        let weak = window.as_weak();
+        window.on_save_rest_pose(move || {
+            if let Ok(mut runtime) = character.lock() {
+                runtime.save_rest_pose();
+                if let Some(window) = weak.upgrade() { window.set_status("Normal rest pose saved."); }
+            }
+        });
+    }
+
+    {
+        let character = Arc::clone(&character);
+        let weak = window.as_weak();
+        window.on_restore_rest_pose(move || {
+            if let Ok(mut runtime) = character.lock() {
+                runtime.restore_rest_pose();
+                runtime.set_paused(true);
+                if let Ok(Some(image)) = runtime.render_idle() { update_character_image(weak.clone(), image); }
+                if let Some(window) = weak.upgrade() { window.set_motion_button_text("Resume Motion".into()); window.set_status("Saved rest pose restored."); }
+            }
+        });
+    }
+
+    {
+        let core = Arc::clone(&core);
+        let weak = window.as_weak();
+        window.on_clear_conversation(move || {
+            match Storage::open_default().and_then(|storage| storage.clear_conversation()) {
+                Ok(()) => {
+                    if let Ok(mut current) = core.lock() { *current = SaeedCore::new(); }
+                    if let Some(window) = weak.upgrade() {
+                        window.set_conversation("Saeed is ready. Shared conversation cleared.".into());
+                        window.set_status("Conversation cleared.".into());
+                    }
+                }
+                Err(error) => if let Some(window) = weak.upgrade() { window.set_status(format!("Could not clear conversation: {error}").into()); }
             }
         });
     }
