@@ -1,0 +1,3 @@
+use std::{fs::{self,File,OpenOptions},io::Write,path::Path,sync::Mutex};
+pub struct Logger{file:Mutex<File>}
+impl Logger{pub fn new(dir:&Path)->Result<Self,String>{let d=dir.join("logs");fs::create_dir_all(&d).map_err(|e|e.to_string())?;let p=d.join("saeed.log");let f=OpenOptions::new().create(true).append(true).open(p).map_err(|e|e.to_string())?;Ok(Self{file:Mutex::new(f)})}pub fn info(&self,s:&str){if let Ok(mut f)=self.file.lock(){let _=writeln!(f,"INFO {s}");}}pub fn error(&self,s:&str){if let Ok(mut f)=self.file.lock(){let _=writeln!(f,"ERROR {s}");}}}
