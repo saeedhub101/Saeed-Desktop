@@ -69,3 +69,16 @@ These rules are mandatory for every future feature, service, fix, and agent cont
 - **Build/package:** `.github/workflows/` and root build files
 
 When adding a feature, first place its ownership in one of these boundaries. If no existing boundary can own it cleanly, document the architectural reason before creating a new one.
+
+
+## Local Voice Providers — Development Contract
+
+Saeed's microphone activation is independent of the OpenAI API key. Set the STT model field to `local` to use a local STT command, and set the TTS model field to `local` to use a local TTS command.
+
+- `SAEED_LOCAL_STT_COMMAND`: local command that receives `{input}` as a temporary WAV file and prints the transcript to stdout.
+- `SAEED_LOCAL_TTS_COMMAND`: local command that receives `{input}` as a UTF-8 text file and `{output}` as the destination WAV file.
+- Local STT/TTS never require an OpenAI API key.
+- The shared Core remains the single conversation owner.
+- The current AI provider is still OpenAI; selecting local STT/TTS does not silently change the AI provider.
+
+This adapter is intentionally command-based so Saeed can connect to an installed local engine without adding a heavyweight speech runtime to the desktop executable. For example, local Whisper/whisper.cpp can be used for STT and Piper can be used for TTS when installed separately. Whisper-style local CLIs commonly accept a WAV input file, while Piper-style CLIs can generate a WAV output file. 
