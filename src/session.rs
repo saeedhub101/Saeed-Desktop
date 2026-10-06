@@ -1,7 +1,15 @@
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MessageSource {
+    Chat,
+    Voice,
+    System,
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct Message {
     pub role: String,
     pub content: String,
+    pub source: MessageSource,
 }
 
 #[derive(Debug, Default)]
@@ -14,10 +22,16 @@ impl Session {
         Self::default()
     }
 
-    pub fn push(&mut self, role: impl Into<String>, content: impl Into<String>) {
+    pub fn push(
+        &mut self,
+        role: impl Into<String>,
+        content: impl Into<String>,
+        source: MessageSource,
+    ) {
         self.messages.push(Message {
             role: role.into(),
             content: content.into(),
+            source,
         });
     }
 
@@ -28,16 +42,18 @@ impl Session {
 
 #[cfg(test)]
 mod tests {
-    use super::Session;
+    use super::{MessageSource, Session};
 
     #[test]
-    fn preserves_shared_conversation_order() {
+    fn chat_and_voice_share_one_conversation() {
         let mut session = Session::new();
-        session.push("user", "open the salary file");
-        session.push("assistant", "I will open it");
-        session.push("user", "calculate Ahmed's total");
+        session.push("user", "start with voice", MessageSource::Voice);
+        session.push("assistant", "I heard you", MessageSource::Voice);
+        session.push("user", "continue in chat", MessageSource::Chat);
 
         assert_eq!(session.messages().len(), 3);
-        assert_eq!(session.messages()[2].content, "calculate Ahmed's total");
+        assert_eq!(session.messages()[0].source, MessageSource::Voice);
+        assert_eq!(session.messages()[2].source, MessageSource::Chat);
+        assert_eq!(session.messages()[2].content, "continue in chat");
     }
 }
