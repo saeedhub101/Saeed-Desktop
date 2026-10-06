@@ -43,6 +43,17 @@ jobs:
       - name: Build release
         run: cargo build --release
 
+      - name: Runtime smoke test
+        shell: pwsh
+        run: |
+          $process = Start-Process -FilePath "target/release/saeed-desktop.exe" -PassThru
+          Start-Sleep -Seconds 8
+          if ($process.HasExited) {
+            throw "Saeed exited during startup smoke test with code $($process.ExitCode)"
+          }
+          Stop-Process -Id $process.Id -Force
+          Write-Host "Saeed startup smoke test passed."
+
       - name: Package prototype
         shell: pwsh
         run: |
