@@ -19,6 +19,44 @@ const VOICE_ACTIVATION_THRESHOLD: f32 = 0.06;
 const VOICE_SILENCE_TIMEOUT: Duration = Duration::from_millis(900);
 const VOICE_MINIMUM_SPEECH: Duration = Duration::from_millis(120);
 
+fn position_character_window(window: &CharacterWindow) {
+    #[cfg(target_os = "windows")]
+    {
+        #[link(name = "user32")]
+        unsafe extern "system" {
+            fn GetSystemMetrics(index: i32) -> i32;
+        }
+        let width = unsafe { GetSystemMetrics(0) }.max(360);
+        let height = unsafe { GetSystemMetrics(1) }.max(420);
+        let x = (width - 380).max(0);
+        let y = (height - 460).max(0);
+        window.window().set_position(slint::PhysicalPosition::new(x, y));
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        window.window().set_position(slint::PhysicalPosition::new(20, 20));
+    }
+}
+
+fn clamp_character_position(window: &CharacterWindow, dx: f32, dy: f32, origin: &Arc<Mutex<(i32, i32)>>) {
+    let (ox, oy) = origin.lock().map(|p| *p).unwrap_or((0, 0));
+    let width = 360i32;
+    let height = 420i32;
+    #[cfg(target_os = "windows")]
+    let (screen_w, screen_h) = {
+        #[link(name = "user32")]
+        unsafe extern "system" {
+            fn GetSystemMetrics(index: i32) -> i32;
+        }
+        (unsafe { GetSystemMetrics(0) }.max(width), unsafe { GetSystemMetrics(1) }.max(height))
+    };
+    #[cfg(not(target_os = "windows"))]
+    let (screen_w, screen_h) = (1920, 1080);
+    let x = (ox + dx.round() as i32).clamp(0, (screen_w - width).max(0));
+    let y = (oy + dy.round() as i32).clamp(0, (screen_h - height).max(0));
+    window.window().set_position(slint::PhysicalPosition::new(x, y));
+}
+
 fn show_error_if_alive(weak: &slint::Weak<AppWindow>, message: &str) {
     let weak = weak.clone();
     let message = message.to_string();
@@ -151,6 +189,45 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
         character_window.as_weak(),
         Duration::from_secs(2),
     );
+
+    {
+        let origin = Arc::clone(&drag_origin);
+        let weak = character_window.as_weak();
+        character_window.on_drag_start(move || {
+            if let Some(window) = weak.upgrade() {
+                if let Ok(mut p) = origin.lock() { *p = (window.window().position().x, window.window().position().y); }
+            }
+        });
+    }
+    {
+        let origin = Arc::clone(&drag_origin);
+        let weak = character_window.as_weak();
+        character_window.on_drag_move(move |dx, dy| {
+            if let Some(window) = weak.upgrade() {
+                clamp_character_position(&window, dx, dy, &origin);
+            }
+        });
+    }
+    {
+        let character = Arc::clone(&character);
+        let weak_main = window.as_weak();
+        let weak_character = character_window.as_weak();
+        character_window.on_toggle_character(move || {
+            if let Ok(mut runtime) = character.lock() {
+                if runtime.visibility() == CharacterVisibility::Visible {
+                    let _ = runtime.set_visibility(CharacterVisibility::Hidden);
+                    if let Some(w) = weak_character.upgrade() { let _ = w.hide(); }
+                    if let Some(w) = weak_main.upgrade() { w.set_character_button_text("Show Saeed".into()); }
+                } else if runtime.set_visibility(CharacterVisibility::Visible).is_ok() {
+                    if let Some(w) = weak_character.upgrade() {
+                        let _ = w.show();
+                        if let Ok(Some(image)) = runtime.render_idle() { w.set_character_image(slint::Image::from_rgba8(image)); }
+                    }
+                    if let Some(w) = weak_main.upgrade() { w.set_character_button_text("Hide Saeed".into()); }
+                }
+            }
+        });
+    }
 
     let voice_active = Arc::new(AtomicBool::new(false));
     let voice_worker_running = Arc::new(AtomicBool::new(false));
