@@ -8,8 +8,6 @@ use std::{
     thread,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
-
-use serde::Serialize;
 use tauri::{
     ipc::Response,
     AppHandle,
