@@ -79,6 +79,37 @@ impl AiProvider for OpenAiProvider {
     }
 }
 
+pub struct OpenAiCompatibleProvider {
+    api_key: String,
+    model: String,
+    endpoint: String,
+}
+
+impl OpenAiCompatibleProvider {
+    pub fn new(api_key: impl Into<String>, model: impl Into<String>, endpoint: impl Into<String>) -> Self {
+        Self { api_key: api_key.into(), model: model.into(), endpoint: endpoint.into() }
+    }
+}
+impl AiProvider for OpenAiCompatibleProvider {
+    fn complete(&self, request: &AiRequest) -> Result<AiResponse, String> {
+        let messages: Vec<_> = request.messages.iter().map(|m| serde_json::json!({"role":m.role,"content":m.content})).collect();
+        let body = serde_json::json!({"model":self.model,"messages":messages});
+        #[derive(Deserialize)] struct Choice { message: MessageContent }
+        #[derive(Deserialize)] struct MessageContent { content: String }
+        #[derive(Deserialize)] struct ChatResponse { choices: Vec<Choice> }
+        let mut response = ureq::post(&self.endpoint)
+            .header("Authorization", &format!("Bearer {}", self.api_key))
+            .header("Content-Type", "application/json")
+            .send_json(&body)
+            .map_err(|e| format!("AI provider request failed: {e}"))?;
+        let payload: ChatResponse = response.body_mut().read_json()
+            .map_err(|e| format!("AI provider response could not be read: {e}"))?;
+        let text = payload.choices.first().map(|c| c.message.content.trim().to_string())
+            .filter(|s| !s.is_empty()).ok_or_else(|| "AI provider returned no text.".to_string())?;
+        Ok(AiResponse { text })
+    }
+}
+
 fn local_temp_path() -> PathBuf {
     let stamp = SystemTime::now().duration_since(UNIX_EPOCH)
         .map(|d| d.as_nanos()).unwrap_or_default();
