@@ -42,12 +42,35 @@ impl SaeedCore {
             messages: self.session.messages().to_vec(),
         })
     }
+
+    pub fn complete_chat<P: AiProvider>(&mut self, provider: &P) -> Result<AiResponse, String> {
+        let response = self.complete(provider)?;
+        self.add_chat_message("assistant", response.text.clone());
+        Ok(response)
+    }
+
+    pub fn complete_voice<P: AiProvider>(&mut self, provider: &P) -> Result<AiResponse, String> {
+        let response = self.complete(provider)?;
+        self.add_voice_message("assistant", response.text.clone());
+        Ok(response)
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::SaeedCore;
+    use crate::ai::{AiProvider, AiRequest, AiResponse};
     use crate::session::MessageSource;
+
+    struct TestProvider;
+
+    impl AiProvider for TestProvider {
+        fn complete(&self, request: &AiRequest) -> Result<AiResponse, String> {
+            Ok(AiResponse {
+                text: format!("received {} messages", request.messages.len()),
+            })
+        }
+    }
 
     #[test]
     fn chat_and_voice_are_one_session() {
@@ -57,6 +80,18 @@ mod tests {
 
         assert_eq!(core.messages().len(), 2);
         assert_eq!(core.messages()[0].source, MessageSource::Voice);
+        assert_eq!(core.messages()[1].source, MessageSource::Chat);
+    }
+
+    #[test]
+    fn assistant_response_is_added_to_same_session() {
+        let mut core = SaeedCore::new();
+        core.add_chat_message("user", "hello");
+
+        let response = core.complete_chat(&TestProvider).expect("completion");
+        assert_eq!(response.text, "received 1 messages");
+        assert_eq!(core.messages().len(), 2);
+        assert_eq!(core.messages()[1].role, "assistant");
         assert_eq!(core.messages()[1].source, MessageSource::Chat);
     }
 }
