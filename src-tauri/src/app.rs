@@ -356,6 +356,33 @@ pub(crate) fn import_character_core(
 }
 
 #[tauri::command]
+fn set_character_scale(
+    app: AppHandle,
+    scale: CharacterScale,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    set_character_scale_core(app, scale, state)
+}
+
+#[tauri::command]
+fn set_low_power(
+    app: AppHandle,
+    enabled: bool,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    set_low_power_core(app, enabled, state)
+}
+
+#[tauri::command]
+fn import_character(
+    app: AppHandle,
+    source: String,
+    state: State<'_, AppState>,
+) -> Result<String, String> {
+    import_character_core(app, source, state)
+}
+
+#[tauri::command]
 fn hide_character(app: AppHandle) -> Result<(), String> {
     destroy_character_window(&app);
     Ok(())
