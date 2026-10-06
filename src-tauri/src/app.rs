@@ -166,22 +166,24 @@ pub(crate) fn create_character_window(app: &AppHandle) -> Result<(), String> {
     .visible(true);
 
     if settings.character.position.x >= 0 && settings.character.position.y >= 0 {
-        let x = settings.character.position.x;
-        let y = settings.character.position.y;
-        if let Ok(Some(monitor)) = window.current_monitor() {
-            if let Ok(size) = window.outer_size() {
-                let mp = monitor.position();
-                let ms = monitor.size();
-                let max_x = mp.x + ms.width.saturating_sub(size.width) as i32;
-                let max_y = mp.y + ms.height.saturating_sub(size.height) as i32;
-                x = x.clamp(mp.x, max_x);
-                y = y.clamp(mp.y, max_y);
-            }
-        }
-        builder = builder.position(x as f64, y as f64);
+        builder = builder.position(
+            settings.character.position.x as f64,
+            settings.character.position.y as f64,
+        );
     }
 
     let window = builder.build().map_err(|e| e.to_string())?;
+    let (x, y) = clamp_character_position(
+        &window,
+        settings.character.position.x,
+        settings.character.position.y,
+    );
+    if settings.character.position.x >= 0
+        && settings.character.position.y >= 0
+        && (x != settings.character.position.x || y != settings.character.position.y)
+    {
+        let _ = window.set_position(tauri::PhysicalPosition::new(x, y));
+    }
     cursor_probe::start(app);
     let _ = window.set_focus();
     Ok(())
