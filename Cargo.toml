@@ -14,7 +14,7 @@ cpal = "0.16"
 hound = "3.5"
 rodio = "0.22"
 keyring = "4.2"
-gltf = { version = "1.4", default-features = false, features = ["names"] }
+gltf = { version = "1.4", default-features = false, features = ["names", "import"] }
 
 [build-dependencies]
 slint-build = "1.17"
