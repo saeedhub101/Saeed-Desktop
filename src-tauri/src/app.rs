@@ -33,7 +33,19 @@ pub struct AppState {
 }
 
 fn data_dir(app: &AppHandle) -> Result<PathBuf, String> {
-    app.path().app_data_dir().map_err(|e| e.to_string())
+    let old_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    let parent = old_dir
+        .parent()
+        .ok_or_else(|| "Unable to resolve APPDATA directory".to_string())?;
+    let new_dir = parent.join("Saeed");
+
+    if old_dir != new_dir && old_dir.exists() && !new_dir.exists() {
+        fs::rename(&old_dir, &new_dir)
+            .map_err(|e| format!("Unable to migrate application data: {e}"))?;
+    }
+
+    fs::create_dir_all(&new_dir).map_err(|e| e.to_string())?;
+    Ok(new_dir)
 }
 
 pub fn run() {
