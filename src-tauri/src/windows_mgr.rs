@@ -1,60 +1,78 @@
-use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder};
+use tauri::{
+    image::Image,
+    runtime::dpi::{PhysicalPosition, PhysicalSize},
+    AppHandle,
+    Manager,
+    WebviewUrl,
+    WebviewWindowBuilder,
+};
+
 use crate::app::AppState;
 use crate::settings::{CharacterScale, Position};
 
-fn size(s: CharacterScale) -> f64 {
-    match s {
-        CharacterScale::Small => 280.0,
-        CharacterScale::Medium => 360.0,
-        CharacterScale::Large => 460.0,
+fn size(scale: CharacterScale) -> u32 {
+    match scale {
+        CharacterScale::Small => 280,
+        CharacterScale::Medium => 360,
+        CharacterScale::Large => 460,
     }
 }
 
-fn default_pos(app: &AppHandle, w: f64) -> Position {
-    if let Ok(ms) = app.available_monitors() {
-        if let Some(m) = ms.first() {
-            let a = m.work_area();
+fn default_position(app: &AppHandle, width: u32) -> Position {
+    if let Ok(monitors) = app.available_monitors() {
+        if let Some(monitor) = monitors.first() {
+            let work_area = monitor.work_area();
+
             return Position {
-                x: a.position.x + (((a.size.width as f64 - w) / 2.0).max(0.0) as i32),
-                y: a.position.y + (((a.size.height as f64 - w - 12.0).max(0.0)) as i32),
+                x: work_area.position.x
+                    + ((work_area.size.width.saturating_sub(width)) / 2) as i32,
+                y: work_area.position.y
+                    + work_area.size.height.saturating_sub(width + 12) as i32,
             };
         }
     }
+
     Position { x: 100, y: 100 }
 }
 
 pub fn create_character_window(app: &AppHandle) -> Result<(), String> {
-    if let Some(w) = app.get_webview_window("character") {
-        let _ = w.show();
-        let _ = w.set_focus();
+    if let Some(window) = app.get_webview_window("character") {
+        window.show().map_err(|e| e.to_string())?;
+        window.set_focus().map_err(|e| e.to_string())?;
         return Ok(());
     }
 
-    let st = app.state::<AppState>();
-    let s = st.settings.lock().map_err(|_| "settings lock".to_string())?.clone();
-    let w = size(s.character.scale);
-    let p = if s.character.position.x >= 0 && s.character.position.y >= 0 {
-        s.character.position
+    let state = app.state::<AppState>();
+    let settings = state
+        .settings
+        .lock()
+        .map_err(|_| "settings lock".to_string())?
+        .clone();
+
+    let width = size(settings.character.scale);
+    let position = if settings.character.position.x >= 0
+        && settings.character.position.y >= 0
+    {
+        settings.character.position
     } else {
-        default_pos(app, w)
+        default_position(app, width)
     };
 
-    let icon = tauri::image::Image::from_app_icon_resource(32)
-        .map_err(|e| e.to_string())?;
+    let icon = Image::from_app_icon_resource(32).map_err(|e| e.to_string())?;
 
-    let win = WebviewWindowBuilder::new(
+    let window = WebviewWindowBuilder::new(
         app,
         "character",
         WebviewUrl::App("index.html".into()),
     )
     .title("Saeed")
-    .inner_size(w, w)
-    .position(p.x as f64, p.y as f64)
+    .inner_size(PhysicalSize::new(width, width))
+    .position(PhysicalPosition::new(position.x, position.y))
     .transparent(true)
     .decorations(false)
     .shadow(false)
-    .always_on_top(s.character.always_on_top)
-    .skip_taskbar(false)
+    .always_on_top(settings.character.always_on_top)
+    .skip_taskbar(true)
     .resizable(false)
     .visible(true)
     .focused(true)
@@ -63,34 +81,51 @@ pub fn create_character_window(app: &AppHandle) -> Result<(), String> {
     .build()
     .map_err(|e| e.to_string())?;
 
-    win.set_ignore_cursor_events(false).map_err(|e| e.to_string())?;
+    window
+        .set_ignore_cursor_events(false)
+        .map_err(|e| e.to_string())?;
 
-    if s.character.position.x < 0 || s.character.position.y < 0 {
-        let mut x = st.settings.lock().map_err(|_| "settings lock".to_string())?;
-        x.character.position = p;
-        let d = app.path().app_data_dir().map_err(|e| e.to_string())?;
-        let _ = x.save(&d);
+    state.logger.info("Character window created");
+
+    if settings.character.position.x < 0 || settings.character.position.y < 0 {
+        let mut saved = state
+            .settings
+            .lock()
+            .map_err(|e| format!("settings lock: {e}"))?;
+
+        saved.character.position = position;
+
+        let dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+        saved.save(&dir)?;
     }
 
     Ok(())
 }
 
 pub fn destroy_character_window(app: &AppHandle) -> Result<(), String> {
-    if let Some(w) = app.get_webview_window("character") {
-        w.close().map_err(|e| e.to_string())?;
+    if let Some(window) = app.get_webview_window("character") {
+        window.destroy().map_err(|e| e.to_string())?;
+
+        if let Some(state) = app.try_state::<AppState>() {
+            state.logger.info("Character window destroyed");
+        }
     }
+
     Ok(())
 }
 
 pub fn show_character(app: &AppHandle) -> Result<(), String> {
     create_character_window(app)?;
 
-    if let Some(st) = app.try_state::<AppState>() {
-        if let Ok(mut s) = st.settings.lock() {
-            s.character.visible = true;
-            if let Ok(d) = app.path().app_data_dir() {
-                let _ = s.save(&d);
+    if let Some(state) = app.try_state::<AppState>() {
+        if let Ok(mut settings) = state.settings.lock() {
+            settings.character.visible = true;
+
+            if let Ok(dir) = app.path().app_data_dir() {
+                let _ = settings.save(&dir);
             }
+
+            state.logger.info("Character window shown");
         }
     }
 
