@@ -203,7 +203,7 @@ fn get_settings(state: State<'_, AppState>) -> AppSettings {
 fn get_character_model(
     app: AppHandle,
     state: State<'_, AppState>,
-) -> Result<Option<Response>, String> {
+) -> Result<Response, String> {
     let settings = state
         .settings
         .lock()
@@ -216,11 +216,11 @@ fn get_character_model(
         .join("model.glb");
 
     if !path.exists() {
-        return Ok(None);
+        return Ok(Response::new(Vec::<u8>::new()));
     }
 
     let bytes = fs::read(path).map_err(|e| e.to_string())?;
-    Ok(Some(Response::new(bytes)))
+    Ok(Response::new(bytes))
 }
 
 #[tauri::command]
