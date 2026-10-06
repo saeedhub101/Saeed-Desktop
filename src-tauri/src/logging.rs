@@ -9,6 +9,7 @@ const MAX_LOG_SIZE: u64 = 2 * 1024 * 1024;
 
 pub struct Logger {
     file: Mutex<File>,
+    path: std::path::PathBuf,
 }
 
 impl Logger {
@@ -39,6 +40,7 @@ impl Logger {
 
         Ok(Self {
             file: Mutex::new(file),
+            path,
         })
     }
 
@@ -52,6 +54,34 @@ impl Logger {
 
     fn write(&self, level: &str, message: &str) {
         if let Ok(mut file) = self.file.lock() {
+            if let Ok(metadata) = file.metadata() {
+                if metadata.len() >= MAX_LOG_SIZE {
+                    let rotated = self.path.with_extension("log.1");
+                    // Windows cannot rename an open log file. Replace the
+                    // handle first, then rotate the old file, then reopen.
+                    let _ = file.flush();
+                    drop(file);
+
+                    if rotated.exists() {
+                        let _ = fs::remove_file(&rotated);
+                    }
+                    let _ = fs::rename(&self.path, &rotated);
+
+                    if let Ok(new_file) = OpenOptions::new()
+                        .create(true)
+                        .append(true)
+                        .open(&self.path)
+                    {
+                        if let Ok(mut guard) = self.file.lock() {
+                            *guard = new_file;
+                            let _ = writeln!(guard, "{level} {message}");
+                            let _ = guard.flush();
+                        }
+                    }
+                    return;
+                }
+            }
+
             let _ = writeln!(file, "{level} {message}");
             let _ = file.flush();
         }
