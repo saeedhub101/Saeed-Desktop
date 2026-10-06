@@ -9,7 +9,7 @@ export component AppWindow inherits Window {
 
     in-out property <string> status: "Ready";
     in-out property <string> conversation: "Saeed is ready. Chat and voice share one conversation.";
-    in-out property <string> voice_button_text: "Voice";
+    in-out property <string> voice_button_text: "Mic ON";
 
     callback send-message(string);
     callback toggle-voice();
@@ -67,7 +67,6 @@ export component AppWindow inherits Window {
                             root.toggle-voice();
                         }
                     }
-
                 }
             }
         }
