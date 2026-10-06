@@ -172,7 +172,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
                 }
 
-                let _ = recorder.stop_stream_for_shutdown();
                 worker_running.store(false, Ordering::Release);
 
                 if active.load(Ordering::Acquire) {
