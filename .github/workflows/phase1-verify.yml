@@ -141,6 +141,39 @@ jobs:
             throw "Second launch does not restore character"
           }
 
+      - name: Lifecycle source verification
+        shell: pwsh
+        run: |
+          $mgr = Get-Content src-tauri/src/windows_mgr.rs -Raw
+          $app = Get-Content src-tauri/src/app.rs -Raw
+          $main = Get-Content src/main.ts -Raw
+
+          if ($mgr -notmatch "prepare-destroy") {
+            throw "Destroy handshake is missing"
+          }
+
+          if ($mgr -notmatch "window\.destroy\(\)") {
+            throw "Character window is not destroyed"
+          }
+
+          if ($app -notmatch "character_cleanup_done") {
+            throw "Character cleanup acknowledgement is missing"
+          }
+
+          if ($app -notmatch "api\.prevent_close\(\)") {
+            throw "Character CloseRequested is not prevented"
+          }
+
+          if ($main -notmatch "prepare-destroy") {
+            throw "Frontend destroy cleanup listener is missing"
+          }
+
+          if ($main -notmatch "scene\.dispose\(\)") {
+            throw "Renderer dispose is missing"
+          }
+
+          Write-Host "Lifecycle destroy/cleanup source checks: PASS"
+
       - name: Install Windows application
         shell: pwsh
         run: |
