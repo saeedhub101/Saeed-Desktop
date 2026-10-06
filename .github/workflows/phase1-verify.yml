@@ -168,7 +168,7 @@ jobs:
             throw "Frontend destroy cleanup listener is missing"
           }
 
-          if ($main -notmatch "scene\.dispose\(\)") {
+          if ($main -notmatch "scene\?\.dispose\(\)") {
             throw "Renderer dispose is missing"
           }
 
