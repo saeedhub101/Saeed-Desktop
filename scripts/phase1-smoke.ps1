@@ -160,6 +160,19 @@ function Open-TrayMenu {
     if(Menu-Item "Show Saeed" 800 -or Menu-Item "Hide Saeed" 800 -or Menu-Item "Change Character..." 800){ return $true }
     try { [System.Windows.Forms.SendKeys]::SendWait("{ESC}") } catch {}
   }
+
+  # Windows 11 can expose a notification-area item through a shell surface that
+  # ignores synthetic right-click input. Focusing the UIA element and invoking
+  # Shift+F10 asks Windows for the same context menu through keyboard semantics.
+  try {
+    $tray.SetFocus()
+    Start-Sleep -Milliseconds 150
+    [System.Windows.Forms.SendKeys]::SendWait("+{F10}")
+    Start-Sleep -Milliseconds 700
+    if(Menu-Item "Show Saeed" 1200 -or Menu-Item "Hide Saeed" 1200 -or Menu-Item "Change Character..." 1200){ return $true }
+    [System.Windows.Forms.SendKeys]::SendWait("{ESC}")
+  } catch {}
+
   return $false
 }
 function Menu-Item([string]$name,[int]$timeout=3000) {
