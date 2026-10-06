@@ -367,7 +367,7 @@ fn show_character(app: AppHandle) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub(crate) fn debug_rotate_once_core(app: AppHandle) -> Result<(), String> {
+fn debug_rotate_once(app: AppHandle) -> Result<(), String> {
     debug_rotate_once_core(app)
 }
 
