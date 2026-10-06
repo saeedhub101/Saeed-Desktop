@@ -219,6 +219,24 @@ jobs:
 
           $running = Get-Process -Id $first.Id -ErrorAction SilentlyContinue
           if (!$running) {
+            Write-Host "Saeed exited during startup"
+            if ($first.HasExited) {
+              Write-Host "Saeed exit code=$($first.ExitCode)"
+            }
+            $logCandidates = @(
+              "$env:APPDATA\Saeed\logs\saeed.log",
+              "$env:LOCALAPPDATA\Saeed\logs\saeed.log"
+            )
+            foreach ($log in $logCandidates) {
+              if (Test-Path $log) {
+                Write-Host "Startup log: $log"
+                Get-Content $log -Tail 200
+              }
+            }
+            Get-WinEvent -FilterHashtable @{LogName='Application'; StartTime=(Get-Date).AddMinutes(-5)} -ErrorAction SilentlyContinue |
+              Where-Object { $_.Message -match 'saeed|WebView2|Application Error' } |
+              Select-Object -First 20 TimeCreated,ProviderName,Id,Message |
+              Format-List
             throw "Saeed exited during startup"
           }
 
