@@ -162,38 +162,36 @@ pub fn install(app: &AppHandle) -> tauri::Result<()> {
         })
         .build(app)?;
 
-    if let Some(tray) = app.tray_by_id("default") {
-        match tray.rect() {
-            Ok(Some(rect)) => {
-                if let Some(state) = app.try_state::<AppState>() {
-                    let (x, y) = match rect.position {
-                        tauri::Position::Physical(p) => (p.x, p.y),
-                        tauri::Position::Logical(p) => (p.x as i32, p.y as i32),
-                    };
-                    let (width, height) = match rect.size {
-                        tauri::Size::Physical(s) => (s.width, s.height),
-                        tauri::Size::Logical(s) => (s.width as u32, s.height as u32),
-                    };
-                    state.logger.info(&format!(
-                        "Tray icon rect: x={} y={} width={} height={}",
-                        x, y, width, height
-                    ));
-                }
-            }
-            Ok(None) => {
-                if let Some(state) = app.try_state::<AppState>() {
-                    state.logger.error("Tray icon rect unavailable");
-                }
-            }
-            Err(error) => {
-                if let Some(state) = app.try_state::<AppState>() {
-                    state.logger.error(&format!("Tray icon rect query failed: {error}"));
-                }
-            }
-        }
-    }
-
+    log_rect_when_ready(app.clone());
     Ok(())
+}
+
+fn log_rect_when_ready(app: AppHandle) {
+    thread::spawn(move || {
+        for _ in 0..20 {
+            if let Some(tray) = app.tray_by_id("default") {
+                if let Ok(Some(rect)) = tray.rect() {
+                    if let Some(state) = app.try_state::<AppState>() {
+                        let (x, y) = match rect.position {
+                            tauri::Position::Physical(p) => (p.x, p.y),
+                            tauri::Position::Logical(p) => (p.x as i32, p.y as i32),
+                        };
+                        let (width, height) = match rect.size {
+                            tauri::Size::Physical(s) => (s.width, s.height),
+                            tauri::Size::Logical(s) => (s.width as u32, s.height as u32),
+                        };
+                        state.logger.info(&format!("Tray icon rect: x={} y={} width={} height={}", x, y, width, height));
+                    }
+                    return;
+                }
+            }
+            thread::sleep(std::time::Duration::from_millis(250));
+        }
+        if let Some(state) = app.try_state::<AppState>() {
+            state.logger.error("Tray icon rect unavailable after startup retries");
+        }
+    });
+}
 }
 
 fn choose(app: AppHandle) {
