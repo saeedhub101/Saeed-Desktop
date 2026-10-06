@@ -20,9 +20,9 @@ Only the application shell and the 3D character window. **Do not** implement cha
 
 ### 2. Core (Rust)
 - Single-instance app: launching a second time focuses the existing one (shows the character if hidden).
-- Settings module: `%APPDATA%/Saeed/settings.json` with `schemaVersion`, default values, atomic writes. Keys for this phase: `character.visible`, `character.scale`, `character.position {x,y}`, `character.alwaysOnTop`, `character.currentId`, `performance.lowPower`.
+- Settings module: `%APPDATA%/Saeed/settings.json` with `schemaVersion`, default values, atomic writes. Keys for this phase: `character.visible`, `character.scale`, `character.alwaysOnTop`, `character.currentId`, `performance.lowPower`.
 - Logging to `%APPDATA%/Saeed/logs/` with rotation.
-- Window manager module with functions `create_character_window()` and `destroy_character_window()`.
+- Core lifecycle functions for creating and destroying the character window.
 
 ### 3. Tray
 - Tray icon with menu: **Show Saeed**, **Hide Saeed**, **Change Character...**, **Character Size** (Small / Medium / Large), **Always on Top** (toggle), **Low Power Mode** (toggle), **Quit**.
@@ -36,7 +36,7 @@ Only the application shell and the 3D character window. **Do not** implement cha
 - Loads a `.glb` (GLTFLoader). Use a small bundled default model for first run; if none is bundled, show a clear placeholder and the "Change Character" flow.
 - **Change Character...**: native file dialog to pick a `.glb`; copy it to `%APPDATA%/Saeed/characters/<id>/model.glb` and load it. Keep previous characters on disk.
 - Auto-fit: compute the bounding box, scale and center the model so the full body fits the window at the chosen size.
-- Drag the character by clicking and dragging on the character itself. Save position on drop. Keep the window on-screen (clamp to the monitor work area, multi-monitor aware).
+- Drag the character by clicking and dragging on the character itself. Keep the window on-screen (clamp to the monitor work area, multi-monitor aware).
 - **Click-through outside the character:** transparent pixels must not capture mouse input. Implement it by sampling the alpha under the cursor (read pixels from the canvas, throttled) and toggling Tauri's ignore-cursor-events accordingly. Clicking the character itself must work.
 - Basic scale options (Small / Medium / Large) change the window size and re-fit.
 
@@ -65,10 +65,10 @@ Chat, settings window, bone tools, animations, speech bubble, microphone, provid
 - [ ] Tray icon appears; Show/Hide/Size/Always on Top/Low Power/Quit all work; menu state is correct.
 - [ ] Closing windows never exits the app; Quit exits cleanly with no leftover processes.
 - [ ] Second launch focuses the existing instance.
-- [ ] A GLB loads, is auto-fitted, and is draggable; position persists after restart.
+- [ ] A GLB loads, is auto-fitted, and is draggable; each fresh process launch places the character automatically at the bottom-right of the Windows work area above the taskbar/tray.
 - [ ] Transparent areas are click-through; the character itself is clickable and draggable.
 - [ ] Change Character loads a different GLB and persists after restart.
-- [ ] Hide destroys the window; WebView2 processes are gone; Show restores the same character and position.
+- [ ] Hide destroys the window; WebView2 processes are gone; Show recreates the character and restores the same character model.
 - [ ] While idle, the GPU/CPU usage is near zero (no continuous rendering). Rotate-once test works.
 - [ ] Memory: tray-only state is low; report the measured numbers for Core only, character visible idle, and after Hide.
 - [ ] Corrupt/invalid GLB shows an error and the app keeps running.
