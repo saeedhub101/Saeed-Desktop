@@ -56,6 +56,16 @@ These rules are mandatory for every future feature, service, fix, and agent cont
 16. **Tests protect boundaries.** Tests should verify shared-session behavior, ownership boundaries, and important contracts as the system grows.
 17. **Preserve this contract.** Every future agent contribution must follow these rules and must not add architectural overlap or destroy established structure.
 
+
+### File Size and Responsibility Rule
+
+18. **Do not create giant source files.** A file must not grow into hundreds of thousands or millions of lines or become a dumping ground for unrelated responsibilities.
+19. **Split by responsibility when complexity grows.** When an Agent, service, controller, or other component becomes too large or complex to maintain safely, keep its public owner/interface and delegate specialized work to focused submodules or sub-agents.
+20. **Sub-agents are on-demand.** A parent Agent may select and invoke the appropriate sub-agent only when that capability is needed; sub-agents must not become competing owners or permanently running parallel systems.
+21. **Do not split merely to increase file count.** Decomposition is justified by responsibility, complexity, maintainability, or a clear architectural boundary—not by an arbitrary line-count target.
+22. **Prefer cohesive medium-sized files.** A component should be easy to read, test, and change without creating dozens of tiny files with no meaningful ownership boundary.
+23. **Preserve a clear parent boundary.** Splitting an implementation must not create duplicate state or bypass the parent owner. The parent remains responsible for orchestration and the submodule/sub-agent owns only its delegated capability.
+
 ### Where to change things
 
 - **Core / lifecycle / shared conversation:** `src/core/` and `src/session.rs`
