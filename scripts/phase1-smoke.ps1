@@ -150,6 +150,17 @@ function Open-TrayMenu {
 
   if(!$tray){ Fail "tray-open" "Saeed tray icon was not exposed through UI Automation"; return $false }
 
+  # Prefer UIA keyboard semantics for Windows 11 shell surfaces. This avoids
+  # relying on GetClickablePoint(), which may legitimately report no point.
+  try {
+    $tray.SetFocus()
+    Start-Sleep -Milliseconds 150
+    [System.Windows.Forms.SendKeys]::SendWait("+{F10}")
+    Start-Sleep -Milliseconds 700
+    if(Menu-Item "Show Saeed" 1200 -or Menu-Item "Hide Saeed" 1200 -or Menu-Item "Change Character..." 1200){ return $true }
+    [System.Windows.Forms.SendKeys]::SendWait("{ESC}")
+  } catch {}
+
   # Notification-area elements on Windows 11 frequently expose a valid
   # bounding rectangle but intentionally do not implement GetClickablePoint().
   # Use the UIA rectangle as the deterministic fallback instead of declaring
@@ -204,6 +215,11 @@ function Click-TrayLeft {
       $pt=[pscustomobject]@{X=[int]($rect.X+($rect.Width/2));Y=[int]($rect.Y+($rect.Height/2))}
     } catch { return $false }
   }
+  try {
+    Invoke-UIA $tray
+    Start-Sleep -Milliseconds 700
+    return $true
+  } catch {}
   [Win32Input]::SetCursorPos([int]$pt.X,[int]$pt.Y)|Out-Null
   [Win32Input]::mouse_event([Win32Input]::LEFTDOWN,0,0,0,[UIntPtr]::Zero)
   [Win32Input]::mouse_event([Win32Input]::LEFTUP,0,0,0,[UIntPtr]::Zero)
