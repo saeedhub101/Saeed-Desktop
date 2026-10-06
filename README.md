@@ -122,3 +122,14 @@ The Character boundary owns procedural state and motion intent. The future GPU c
 - The renderer is created lazily when Saeed becomes visible and is dropped when Saeed is hidden.
 - Rigged GLBs use `JOINTS_0`, `WEIGHTS_0`, skin inverse-bind matrices and detected bone names for procedural bone motion; unrigged GLBs still render as static/procedurally posed mesh geometry.
 - `src/app.rs` owns UI callback wiring; `src/main.rs` is only the application entry point and Slint module wiring.
+
+
+### Complete Runtime Controls — Implementation
+
+The current desktop UI exposes the operational Performance surface for API, Voice, Agent, Permissions, Status, 3D Status, Diagnostics, and Pose/Motion. Character motion has one runtime owner and one global Pause/Resume control. Pause stops automatic procedural actions and keeps the manual/rest pose active; the setting is persisted across restarts. The Pose/Motion screen applies yaw, pitch, roll, and arm-wave values directly to the runtime and supports saving/restoring the normal rest pose.
+
+When no external GLB is installed, CharacterRuntime uses a built-in procedural humanoid fallback so the application remains functional rather than exiting or showing a fake character control. If a valid Saeed GLB is available, the renderer uses the GLB and its real skin/joint data instead.
+
+### Verification Decision
+
+A release is not considered complete merely because Rust compilation succeeds. Windows CI must pass cargo check, cargo test, release packaging, and the Windows startup smoke test. Functional boundaries are covered by unit tests where they can be deterministic; hardware/API dependent voice and provider behavior remains explicitly reported at runtime rather than being replaced by fake tests.
