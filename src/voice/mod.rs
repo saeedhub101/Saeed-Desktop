@@ -1,11 +1,13 @@
 //! Voice hardware and provider boundary.
 //!
-//! Audio hardware is active only while recording or playing a response.
-//! Providers never own application/session state; Core remains the owner of
-//! conversation state and lifecycle.
+//! The microphone is active only while the user explicitly enables Mic mode.
+//! Speech detection is local; network work happens outside the audio callback.
 
 use std::io::Cursor;
 use std::sync::{Arc, Mutex};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::thread;
+use std::time::{Duration, Instant};
 
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{SampleFormat, Stream, StreamConfig};
@@ -27,14 +29,12 @@ pub trait TextToSpeech {
     fn synthesize(&self, text: &str) -> Result<Vec<u8>, String>;
 }
 
-/// Captures from the Windows default microphone while the stream is alive.
-/// Starting and stopping the recorder are explicit; there is no background
-/// recording loop.
+/// Captures microphone samples while the stream is alive.
+/// Speech detection runs outside the CPAL callback.
 pub struct MicrophoneRecorder {
     stream: Option<Stream>,
     samples: Arc<Mutex<Vec<i16>>>,
     config: Option<StreamConfig>,
-    sample_format: Option<SampleFormat>,
 }
 
 impl MicrophoneRecorder {
@@ -43,7 +43,6 @@ impl MicrophoneRecorder {
             stream: None,
             samples: Arc::new(Mutex::new(Vec::new())),
             config: None,
-            sample_format: None,
         }
     }
 
@@ -83,8 +82,7 @@ impl MicrophoneRecorder {
                     move |data: &[f32], _| {
                         if let Ok(mut buffer) = samples.lock() {
                             buffer.extend(data.iter().map(|sample| {
-                                let value = sample.clamp(-1.0, 1.0);
-                                (value * i16::MAX as f32) as i16
+                                (sample.clamp(-1.0, 1.0) * i16::MAX as f32) as i16
                             }));
                         }
                     },
@@ -136,22 +134,17 @@ impl MicrophoneRecorder {
             .map_err(|error| format!("Could not activate microphone: {error}"))?;
 
         self.config = Some(config);
-        self.sample_format = Some(sample_format);
         self.stream = Some(stream);
         Ok(())
     }
 
-    /// Stops recording and returns a complete PCM WAV file.
     pub fn stop(&mut self) -> Result<Vec<u8>, String> {
-        let Some(_) = self.stream.take() else {
-            return Err("Microphone is not listening.".to_string());
-        };
+        self.stop_stream()?;
 
         let config = self
             .config
             .take()
             .ok_or_else(|| "Microphone configuration is unavailable.".to_string())?;
-        self.sample_format = None;
 
         let samples = {
             let buffer = self
@@ -165,31 +158,129 @@ impl MicrophoneRecorder {
             return Err("No microphone audio was captured.".to_string());
         }
 
-        let mut bytes = Cursor::new(Vec::new());
-        let spec = hound::WavSpec {
-            channels: config.channels,
-            sample_rate: config.sample_rate.0,
-            bits_per_sample: 16,
-            sample_format: hound::SampleFormat::Int,
-        };
+        encode_wav(&samples, &config)
+    }
 
-        {
-            let mut writer = hound::WavWriter::new(&mut bytes, spec)
-                .map_err(|error| format!("Could not create WAV audio: {error}"))?;
+    fn stop_stream(&mut self) -> Result<(), String> {
+        self.stream.take();
+        Ok(())
+    }
 
-            for sample in samples {
-                writer
-                    .write_sample(sample)
-                    .map_err(|error| format!("Could not encode microphone audio: {error}"))?;
-            }
-
-            writer
-                .finalize()
-                .map_err(|error| format!("Could not finalize microphone audio: {error}"))?;
+    /// Waits for one spoken utterance using local RMS + silence detection.
+    ///
+    /// Returns None when Mic mode is disabled before speech is completed.
+    pub fn capture_utterance(
+        &mut self,
+        active: &AtomicBool,
+        activation_threshold: f32,
+        silence_timeout: Duration,
+        minimum_speech: Duration,
+    ) -> Result<Option<Vec<u8>>, String> {
+        if !self.is_recording() {
+            return Err("Microphone is not listening.".to_string());
         }
 
-        Ok(bytes.into_inner())
+        let started_at = Instant::now();
+        let mut last_checked = 0usize;
+        let mut speech_started: Option<Instant> = None;
+        let mut last_voice = Instant::now();
+
+        while active.load(Ordering::Acquire) {
+            thread::sleep(Duration::from_millis(40));
+
+            let samples = self
+                .samples
+                .lock()
+                .map_err(|_| "Microphone buffer is unavailable.".to_string())?
+                .clone();
+
+            if samples.len() <= last_checked {
+                continue;
+            }
+
+            let chunk = &samples[last_checked..];
+            last_checked = samples.len();
+
+            let rms = rms(chunk);
+            if rms >= activation_threshold {
+                let now = Instant::now();
+                if speech_started.is_none() {
+                    speech_started = Some(now);
+                }
+                last_voice = now;
+            }
+
+            if let Some(start) = speech_started {
+                let now = Instant::now();
+                if now.duration_since(start) >= minimum_speech
+                    && now.duration_since(last_voice) >= silence_timeout
+                {
+                    let audio = self.stop()?;
+                    return Ok(Some(audio));
+                }
+            }
+
+            if speech_started.is_none() && started_at.elapsed() > Duration::from_millis(200) {
+                // Keep only a short rolling pre-speech buffer to avoid unbounded
+                // memory growth during silence.
+                let keep = 48_000usize;
+                if let Ok(mut buffer) = self.samples.lock() {
+                    if buffer.len() > keep {
+                        let remove = buffer.len() - keep;
+                        buffer.drain(..remove);
+                        last_checked = last_checked.saturating_sub(remove);
+                    }
+                }
+            }
+        }
+
+        self.stop_stream()?;
+        self.config.take();
+        Ok(None)
     }
+}
+
+fn rms(samples: &[i16]) -> f32 {
+    if samples.is_empty() {
+        return 0.0;
+    }
+
+    let sum = samples
+        .iter()
+        .map(|sample| {
+            let normalized = *sample as f32 / i16::MAX as f32;
+            normalized * normalized
+        })
+        .sum::<f32>();
+
+    (sum / samples.len() as f32).sqrt()
+}
+
+fn encode_wav(samples: &[i16], config: &StreamConfig) -> Result<Vec<u8>, String> {
+    let mut bytes = Cursor::new(Vec::new());
+    let spec = hound::WavSpec {
+        channels: config.channels,
+        sample_rate: config.sample_rate.0,
+        bits_per_sample: 16,
+        sample_format: hound::SampleFormat::Int,
+    };
+
+    {
+        let mut writer = hound::WavWriter::new(&mut bytes, spec)
+            .map_err(|error| format!("Could not create WAV audio: {error}"))?;
+
+        for sample in samples {
+            writer
+                .write_sample(*sample)
+                .map_err(|error| format!("Could not encode microphone audio: {error}"))?;
+        }
+
+        writer
+            .finalize()
+            .map_err(|error| format!("Could not finalize microphone audio: {error}"))?;
+    }
+
+    Ok(bytes.into_inner())
 }
 
 impl Default for MicrophoneRecorder {
@@ -219,10 +310,6 @@ impl AudioPlayer {
     }
 }
 
-/// OpenAI speech-to-text adapter.
-///
-/// The caller supplies a complete audio file. Recording, lifecycle, and
-/// conversation state remain outside this provider.
 pub struct OpenAiSpeechToText {
     api_key: String,
     model: String,
@@ -230,24 +317,18 @@ pub struct OpenAiSpeechToText {
 
 impl OpenAiSpeechToText {
     pub fn new(api_key: impl Into<String>, model: impl Into<String>) -> Self {
-        Self {
-            api_key: api_key.into(),
-            model: model.into(),
-        }
+        Self { api_key: api_key.into(), model: model.into() }
     }
 
     pub fn from_environment() -> Result<Self, String> {
         let api_key = std::env::var("OPENAI_API_KEY")
             .map_err(|_| "OPENAI_API_KEY is not configured.".to_string())?;
-
         let api_key = api_key.trim().to_string();
         if api_key.is_empty() {
             return Err("OPENAI_API_KEY is empty.".to_string());
         }
-
         let model = std::env::var("OPENAI_STT_MODEL")
             .unwrap_or_else(|_| "gpt-4o-mini-transcribe".to_string());
-
         Ok(Self::new(api_key, model))
     }
 }
@@ -268,10 +349,7 @@ impl SpeechToText for OpenAiSpeechToText {
             .mime_str("audio/wav")
             .map_err(|error| format!("Could not prepare audio: {error}"))?;
 
-        let form = Form::new()
-            .part("file", part)
-            .text("model", &self.model);
-
+        let form = Form::new().part("file", part).text("model", &self.model);
         let mut response = ureq::post("https://api.openai.com/v1/audio/transcriptions")
             .header("Authorization", &format!("Bearer {}", self.api_key))
             .send(form)
@@ -286,15 +364,10 @@ impl SpeechToText for OpenAiSpeechToText {
         if text.is_empty() {
             return Err("Speech-to-text returned no text.".to_string());
         }
-
         Ok(text)
     }
 }
 
-/// OpenAI text-to-speech adapter.
-///
-/// The returned bytes are the provider audio payload. Playback is handled by
-/// AudioPlayer, keeping provider and hardware responsibilities separate.
 pub struct OpenAiTextToSpeech {
     api_key: String,
     model: String,
@@ -307,28 +380,20 @@ impl OpenAiTextToSpeech {
         model: impl Into<String>,
         voice: impl Into<String>,
     ) -> Self {
-        Self {
-            api_key: api_key.into(),
-            model: model.into(),
-            voice: voice.into(),
-        }
+        Self { api_key: api_key.into(), model: model.into(), voice: voice.into() }
     }
 
     pub fn from_environment() -> Result<Self, String> {
         let api_key = std::env::var("OPENAI_API_KEY")
             .map_err(|_| "OPENAI_API_KEY is not configured.".to_string())?;
-
         let api_key = api_key.trim().to_string();
         if api_key.is_empty() {
             return Err("OPENAI_API_KEY is empty.".to_string());
         }
-
         let model = std::env::var("OPENAI_TTS_MODEL")
             .unwrap_or_else(|_| "gpt-4o-mini-tts".to_string());
-
         let voice = std::env::var("OPENAI_TTS_VOICE")
             .unwrap_or_else(|_| "alloy".to_string());
-
         Ok(Self::new(api_key, model, voice))
     }
 }
