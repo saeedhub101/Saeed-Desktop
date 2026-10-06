@@ -166,9 +166,17 @@ pub fn install(app: &AppHandle) -> tauri::Result<()> {
         match tray.rect() {
             Ok(Some(rect)) => {
                 if let Some(state) = app.try_state::<AppState>() {
+                    let (x, y) = match rect.position {
+                        tauri::Position::Physical(p) => (p.x, p.y),
+                        tauri::Position::Logical(p) => (p.x as i32, p.y as i32),
+                    };
+                    let (width, height) = match rect.size {
+                        tauri::Size::Physical(s) => (s.width, s.height),
+                        tauri::Size::Logical(s) => (s.width as u32, s.height as u32),
+                    };
                     state.logger.info(&format!(
                         "Tray icon rect: x={} y={} width={} height={}",
-                        rect.position.x, rect.position.y, rect.size.width, rect.size.height
+                        x, y, width, height
                     ));
                 }
             }
