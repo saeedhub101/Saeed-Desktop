@@ -12,6 +12,7 @@ using System.Runtime.InteropServices;
 public static class Win32Input {
   [StructLayout(LayoutKind.Sequential)] public struct POINT { public int X; public int Y; }
   [DllImport("user32.dll")] public static extern IntPtr FindWindow(string lpClassName, string lpWindowName);
+  [DllImport("user32.dll")] public static extern bool IsWindow(IntPtr hWnd);
   [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hWnd, out RECT rect);
   [StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left, Top, Right, Bottom; }
   [DllImport("user32.dll")] public static extern bool SetCursorPos(int X, int Y);
@@ -81,17 +82,21 @@ function Get-TreeMemoryMB([int]$RootPid) {
 
 function Get-WindowHandle {
   $h=[Win32Input]::FindWindow($null,"Saeed")
-  if($h -ne [IntPtr]::Zero){ return $h }
+  if($h -ne [IntPtr]::Zero -and [Win32Input]::IsWindow($h)){ return $h }
   $p=Get-SaeedProcess | Select-Object -First 1
   if($p){
     $p.Refresh()
-    return $p.MainWindowHandle
+    $candidate=$p.MainWindowHandle
+    if($candidate -ne [IntPtr]::Zero -and [Win32Input]::IsWindow($candidate)){ return $candidate }
   }
   return [IntPtr]::Zero
 }
 
 function Get-Rect([IntPtr]$Handle) {
   $rect=New-Object Win32Input+RECT
+  if($Handle -eq [IntPtr]::Zero -or ![Win32Input]::IsWindow($Handle)){
+    throw "GetWindowRect received a stale window handle"
+  }
   if(![Win32Input]::GetWindowRect($Handle,[ref]$rect)){
     throw "GetWindowRect failed"
   }
@@ -128,6 +133,8 @@ function Make-TestGlb([string]$Path) {
   [IO.File]::WriteAllBytes($Path,$out.ToArray());$w.Dispose();$out.Dispose()
 }
 
+Get-SaeedProcess | Stop-Process -Force -ErrorAction SilentlyContinue
+Wait-Until { if((Get-SaeedProcess).Count -eq 0){$true}else{$null}} 10000 | Out-Null
 Remove-Item $InstallDir -Recurse -Force -ErrorAction SilentlyContinue
 $installerPath=(Resolve-Path $Installer).Path
 Start-Process -FilePath $installerPath -ArgumentList @("/S","/D=$InstallDir") -Wait
