@@ -76,10 +76,6 @@ impl MicrophoneRecorder {
             buffer.clear();
         }
 
-        let error_callback = |error| {
-            eprintln!("Saeed microphone stream error: {error}");
-        };
-
         let stream = match sample_format {
             SampleFormat::F32 => device
                 .build_input_stream(
@@ -92,7 +88,7 @@ impl MicrophoneRecorder {
                             }));
                         }
                     },
-                    error_callback,
+                    |error| eprintln!("Saeed microphone stream error: {error}"),
                     None,
                 )
                 .map_err(|error| format!("Could not start microphone: {error}"))?,
@@ -106,7 +102,7 @@ impl MicrophoneRecorder {
                                 buffer.extend_from_slice(data);
                             }
                         },
-                        error_callback,
+                        |error| eprintln!("Saeed microphone stream error: {error}"),
                         None,
                     )
                     .map_err(|error| format!("Could not start microphone: {error}"))?
@@ -123,7 +119,7 @@ impl MicrophoneRecorder {
                                 }));
                             }
                         },
-                        error_callback,
+                        |error| eprintln!("Saeed microphone stream error: {error}"),
                         None,
                     )
                     .map_err(|error| format!("Could not start microphone: {error}"))?
