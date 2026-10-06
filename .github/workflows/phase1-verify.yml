@@ -32,6 +32,18 @@ jobs:
           if (!$nsis) { throw "NSIS installer not found" }
           Write-Host "EXE=$($exe.FullName)"
           Write-Host "INSTALLER=$($nsis.FullName)"
+      - name: Verify static VC runtime dependencies
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem -Path src-tauri/target/release -Filter "saeed.exe" -Recurse | Select-Object -First 1
+          if (!$exe) { throw "saeed.exe not found" }
+          $dumpbin = Get-ChildItem "$env:ProgramFiles\Microsoft Visual Studio" -Filter dumpbin.exe -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (!$dumpbin) { $dumpbin = Get-ChildItem "${env:ProgramFiles(x86)}\Microsoft Visual Studio" -Filter dumpbin.exe -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1 }
+          if (!$dumpbin) { throw "dumpbin.exe not found" }
+          $deps = & $dumpbin.FullName /DEPENDENTS $exe.FullName 2>&1 | Out-String
+          Write-Host $deps
+          if ($deps -match "(?i)vcruntime140\.dll|msvcp140\.dll") { throw "Executable still depends on dynamic VC runtime" }
+          Write-Host "Static VC runtime dependency check: PASS"
       - name: Single-instance source verification
         shell: pwsh
         run: |
