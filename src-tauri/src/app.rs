@@ -36,6 +36,9 @@ pub struct AppState {
     pub probe_generation: AtomicU64,
     /// Tracks an in-flight hide so Show during a Hide is not lost.
     pub hide_state: Mutex<HideState>,
+    /// Allows the lifecycle owner to destroy the character window without the
+    /// user-close handler recursively converting the destroy into another Hide.
+    pub destroying_character: std::sync::atomic::AtomicBool,
 }
 
 pub(crate) fn data_dir(app: &AppHandle) -> Result<PathBuf, String> {
@@ -77,6 +80,7 @@ pub fn run() {
                 cleanup_ack: Mutex::new(None),
                 probe_generation: AtomicU64::new(0),
                 hide_state: Mutex::new(HideState::Idle),
+                destroying_character: std::sync::atomic::AtomicBool::new(false),
             });
 
             tray::install(app.handle())?;
@@ -115,10 +119,19 @@ pub fn run() {
                         return;
                     }
 
-                    // Never let the OS tear the window down directly: run the
-                    // renderer cleanup handshake first, then destroy.
+                    let app = window.app_handle();
+                    if let Some(state) = app.try_state::<AppState>() {
+                        if state.destroying_character.load(Ordering::SeqCst) {
+                            // This close is the final leg of our explicit
+                            // destroy() call. Allow the OS/Tauri close through.
+                            return;
+                        }
+                    }
+
+                    // A user/OS close means Hide: keep the process/tray alive
+                    // and run the renderer cleanup handshake before destruction.
                     api.prevent_close();
-                    windows_mgr::hide_character(window.app_handle());
+                    windows_mgr::hide_character(app);
                 }
                 tauri::WindowEvent::Moved(position) => {
                     if window.label() != "character" {
