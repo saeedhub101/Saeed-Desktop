@@ -54,15 +54,17 @@ jobs:
           Stop-Process -Id $process.Id -Force
           Write-Host "Saeed startup smoke test passed."
 
-      - name: Package prototype
+      - name: Package Saeed
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path dist | Out-Null
           Copy-Item target/release/saeed-desktop.exe dist/Saeed.exe
-          Compress-Archive -Path dist/Saeed.exe -DestinationPath Saeed-Desktop-Prototype.zip
+          New-Item -ItemType Directory -Force -Path dist/assets | Out-Null
+          Copy-Item assets/Saeed_AI-3D.glb dist/assets/Saeed_AI-3D.glb
+          Compress-Archive -Path dist/Saeed.exe,dist/assets -DestinationPath Saeed-Desktop.zip
 
       - name: Upload prototype
         uses: actions/upload-artifact@v4
         with:
-          name: Saeed-Desktop-Prototype
-          path: Saeed-Desktop-Prototype.zip
+          name: Saeed-Desktop
+          path: Saeed-Desktop.zip
