@@ -69,8 +69,14 @@ pub fn install(app: &AppHandle) -> tauri::Result<()> {
             _ => {}
         })
         .on_tray_icon_event(|tray, event| {
-            if let TrayIconEvent::Click { button: MouseButton::Left, button_state: MouseButtonState::Up, .. } = event {
+            if let TrayIconEvent::Click { button: MouseButton::Left, button_state: MouseButtonState::Up, rect, .. } = event {
                 let app = tray.app_handle();
+                if let Some(state) = app.try_state::<AppState>() {
+                    state.logger.info(&format!(
+                        "Tray icon rect: x={} y={} width={} height={}",
+                        rect.position.x, rect.position.y, rect.size.width, rect.size.height
+                    ));
+                }
                 if app.get_webview_window("character").is_some() {
                     let _ = app::hide_character_core(app.clone());
                 } else {
