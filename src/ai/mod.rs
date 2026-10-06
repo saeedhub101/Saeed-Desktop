@@ -35,7 +35,7 @@ impl OpenAiProvider {
         }
     }
 
-    pub fn from_environment() -> Result<Self, String> {
+    pub fn from_config(api_key: impl Into<String>, model: impl Into<String>) -> Result<Self, String> {\n        let api_key = api_key.into().trim().to_string();\n        if api_key.is_empty() {\n            return Err("OpenAI API key is not configured. Open Settings and save your API key.".to_string());\n        }\n        Ok(Self::new(api_key, model))\n    }\n\n    pub fn from_environment() -> Result<Self, String> {
         let api_key = std::env::var("OPENAI_API_KEY")
             .map_err(|_| "OPENAI_API_KEY is not configured.".to_string())?;
 
