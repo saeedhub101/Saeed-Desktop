@@ -1,0 +1,86 @@
+name: Phase 1 — Build and Full Windows Runtime Acceptance
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  phase1:
+    name: Windows Phase 1 acceptance
+    runs-on: windows-2025
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v6
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - name: Install frontend dependencies
+        shell: pwsh
+        run: npm install
+
+      - name: TypeScript check
+        shell: pwsh
+        run: npm run check
+
+      - name: Cargo check
+        shell: pwsh
+        run: cargo check --manifest-path src-tauri/Cargo.toml
+
+      - name: Cargo clippy
+        shell: pwsh
+        run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets
+
+      - name: Build NSIS installer
+        shell: pwsh
+        run: npm run build
+
+      - name: Verify Phase 1 packaging contract
+        shell: pwsh
+        run: |
+          $config = Get-Content src-tauri/tauri.conf.json -Raw | ConvertFrom-Json
+          if ($config.bundle.targets -notcontains "nsis") { throw "NSIS target is missing" }
+          if ($config.bundle.windows.webviewInstallMode.type -ne "embedBootstrapper") { throw "WebView2 bootstrapper is not embedded" }
+          $installer = Get-ChildItem "src-tauri/target/release/bundle/nsis/*.exe" -File | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+          if (-not $installer) { throw "No NSIS installer was produced" }
+          "INSTALLER=$($installer.FullName)" | Out-File "$env:RUNNER_TEMP\installer.txt" -Encoding utf8
+          Write-Host "Installer: $($installer.FullName)"
+
+      - name: Run complete Phase 1 installed-EXE smoke
+        shell: pwsh
+        run: |
+          $installer = (Get-Content "$env:RUNNER_TEMP\installer.txt" -Raw).Trim()
+          powershell -NoProfile -ExecutionPolicy Bypass -File scripts/phase1-smoke.ps1 -Installer $installer
+
+      - name: Publish Phase 1 evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: phase1-evidence
+          path: |
+            ${{ runner.temp }}/phase1-results.json
+            ${{ runner.temp }}/installer.txt
+            ${{ env.APPDATA }}/Saeed/logs/*.log
+          if-no-files-found: warn
+
+      - name: Publish installer
+        if: success()
+        uses: actions/upload-artifact@v6
+        with:
+          name: Saeed-Phase1-NSIS
+          path: src-tauri/target/release/bundle/nsis/*.exe
+          if-no-files-found: error
