@@ -50,16 +50,17 @@ function Get-DescendantPids([int]$RootPid) {
     return @()
   }
 
-  $result=New-Object System.Collections.Generic.List[int]
-  $queue=New-Object System.Collections.Generic.Queue[int]
-  $queue.Enqueue($RootPid)
+  $result=@()
+  $queue=@($RootPid)
   while($queue.Count -gt 0){
-    $parent=$queue.Dequeue()
+    $parent=$queue[0]
+    if($queue.Count -gt 1){ $queue=@($queue[1..($queue.Count-1)]) } else { $queue=@() }
+
     foreach($entry in $all.GetEnumerator()){
       if($entry.Value -eq $parent -and $entry.Key -ne $RootPid){
-        if(!$result.Contains($entry.Key)){
-          $result.Add($entry.Key)
-          $queue.Enqueue($entry.Key)
+        if($result -notcontains $entry.Key){
+          $result += [int]$entry.Key
+          $queue += [int]$entry.Key
         }
       }
     }
@@ -70,8 +71,8 @@ function Get-DescendantPids([int]$RootPid) {
 function Get-TreeMemoryMB([int]$RootPid) {
   $pids=@($RootPid)+@(Get-DescendantPids $RootPid)
   $bytes=0
-  foreach($pid in $pids){
-    try { $bytes += [int64](Get-Process -Id $pid -ErrorAction Stop).WorkingSet64 } catch {}
+  foreach($childPid in $pids){
+    try { $bytes += [int64](Get-Process -Id $childPid -ErrorAction Stop).WorkingSet64 } catch {}
   }
   return [math]::Round($bytes / 1MB, 1)
 }
