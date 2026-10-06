@@ -168,6 +168,7 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
                 Ok(None) => clear_character_image(&window),
                 Err(error) => {
                     clear_character_image(&window);
+                    if let Some(character_window) = character_window_weak.upgrade() { let _ = character_window.hide(); }
                     window.set_character_button_text("Show Saeed".into());
                     window.set_status(format!("Ready • character unavailable: {error}").into());
                 }
@@ -258,7 +259,11 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
                     }
                     match runtime.render_idle() {
                         Ok(Some(image)) => {
-                            window.set_character_image(slint::Image::from_rgba8(image));
+                            window.set_character_image(slint::Image::from_rgba8(image.clone()));
+                            if let Some(character_window) = character_window_weak.upgrade() {
+                                let _ = character_window.show();
+                                character_window.set_character_image(slint::Image::from_rgba8(image));
+                            }
                             window.set_status("Saeed visible • 3D ready".into());
                         }
                         Ok(None) => clear_character_image(&window),
