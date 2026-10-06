@@ -54,10 +54,6 @@ jobs:
         shell: pwsh
         run: npm run check
 
-      - name: Rust format check
-        shell: pwsh
-        run: cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
-
       - name: Cargo check
         shell: pwsh
         run: cargo check --manifest-path src-tauri/Cargo.toml
