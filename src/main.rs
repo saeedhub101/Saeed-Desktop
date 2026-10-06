@@ -9,6 +9,7 @@ use std::time::Duration;
 
 use saeed_desktop::ai::{AiProvider, AiRequest, LocalCommandAiProvider, OpenAiProvider};
 use saeed_desktop::core::SaeedCore;
+use saeed_desktop::character::{CharacterState, CharacterVisibility, ProceduralCharacterController};
 use saeed_desktop::storage::{AppSettings, Storage};
 use saeed_desktop::voice::{MicrophoneRecorder, VoiceController};
 use slint::SharedString;
@@ -62,6 +63,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let core = Arc::new(Mutex::new(SaeedCore::from_messages(persisted_messages.clone())));
     if let Some(last) = persisted_messages.last() {
         window.set_conversation(format!("{}: {}", last.role, last.content).into());
+    }
+    let character = Arc::new(Mutex::new(ProceduralCharacterController::new()));
+    if let Ok(mut character) = character.lock() {
+        character.set_visibility(CharacterVisibility::Visible);
     }
     let voice_active = Arc::new(AtomicBool::new(false));
     let voice_worker_running = Arc::new(AtomicBool::new(false));
@@ -177,6 +182,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             };
 
             let core = Arc::clone(&core);
+            let character = Arc::clone(&character);
+            if let Ok(mut character) = character.lock() {
+                character.set_state(CharacterState::Interacting);
+            }
             let weak = weak.clone();
 
             let _ = slint::invoke_from_event_loop({
@@ -214,6 +223,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     };
 
                     let response_text = response.text.clone();
+                    {
+                        if let Ok(mut character) = character.lock() {
+                            character.set_state(CharacterState::Idle);
+                        }
+                    }
                     {
                         let mut core = core.lock()
                             .map_err(|_| "Core state is unavailable.".to_string())?;
@@ -256,6 +270,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let worker_running = Arc::clone(&voice_worker_running);
         let core = Arc::clone(&core);
         let settings = Arc::clone(&settings);
+        let character = Arc::clone(&character);
         let weak_for_handler = weak.clone();
 
         window.on_toggle_voice(move || {
@@ -282,6 +297,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let worker_running = Arc::clone(&worker_running);
             let core = Arc::clone(&core);
             let settings = Arc::clone(&settings);
+            let character = Arc::clone(&character);
             let weak = weak_for_handler.clone();
 
             thread::spawn(move || {
@@ -317,6 +333,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                     update_voice_ui(&weak, "Mic OFF", "Transcribing…");
 
+                    if let Ok(mut character) = character.lock() {
+                        character.set_state(CharacterState::Interacting);
+                    }
+
                     match VoiceController::process_turn(&core, &settings, &audio) {
                         Ok(result) => {
                             let transcript = result.transcript;
@@ -349,11 +369,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 break;
                             }
 
+                            if let Ok(mut character) = character.lock() {
+                                character.set_state(CharacterState::Idle);
+                            }
+
                             if active.load(Ordering::Acquire) {
                                 update_voice_ui(&weak, "Mic OFF", "Listening…");
                             }
                         }
                         Err(error) => {
+                            if let Ok(mut character) = character.lock() {
+                                character.set_state(CharacterState::Idle);
+                            }
                             update_voice_ui(&weak, "Mic ON", &format!("Voice error: {error}"));
                             active.store(false, Ordering::Release);
                             break;
