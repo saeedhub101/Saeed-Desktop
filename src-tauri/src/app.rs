@@ -80,7 +80,11 @@ pub fn run() {
             tray::install(app.handle())?;
 
             if settings.character.visible {
-                let _ = windows_mgr::create_character_window(app.handle());
+                if let Err(error) = windows_mgr::create_character_window(app.handle()) {
+                    app.state::<AppState>()
+                        .logger
+                        .error(&format!("Character window startup failed: {error}"));
+                }
             }
 
             Ok(())
