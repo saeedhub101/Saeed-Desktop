@@ -140,7 +140,7 @@ impl GlbCharacterRenderer {
             let normal=pts[1].sub(pts[0]).cross(pts[2].sub(pts[0])).normalize();
             let light=normal.dot(Vec3{x:-0.35,y:0.65,z:0.75}.normalize()).max(0.15);
             let color=[(t.color[0] as f32*light) as u8,(t.color[1] as f32*light) as u8,(t.color[2] as f32*light) as u8,t.color[3]];
-            let project=|p:Vec3|(f32,f32,f32){
+            let project=|p:Vec3| -> (f32,f32,f32) {
                 let z=p.z+3.2;let perspective=2.2/z.max(0.25);
                 (self.width as f32*0.5+p.x*self.width as f32*0.42*perspective,
                  self.height as f32*0.52-p.y*self.height as f32*0.42*perspective,z)
