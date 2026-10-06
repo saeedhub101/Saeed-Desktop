@@ -121,7 +121,7 @@ pub fn show_character(app: &AppHandle) -> Result<(), String> {
         if let Ok(mut settings) = state.settings.lock() {
             settings.character.visible = true;
 
-            if let Ok(dir) = app.path().app_data_dir() {
+            if let Ok(dir) = crate::app::data_dir(app) {
                 let _ = settings.save(&dir);
             }
 
