@@ -6,7 +6,7 @@
 
 use std::sync::{Arc, Mutex};
 
-use crate::ai::{AiProvider, LocalCommandAiProvider, OpenAiProvider};
+use crate::ai::{AiProvider, AiRequest, LocalCommandAiProvider, OpenAiProvider};
 use crate::core::SaeedCore;
 use crate::storage::AppSettings;
 
@@ -44,23 +44,30 @@ impl VoiceController {
             stt.transcribe(audio)?
         };
 
-        let response = {
+        let messages = {
             let mut core = core
                 .lock()
                 .map_err(|_| "Core state is unavailable.".to_string())?;
-
             core.add_voice_message("user", &transcript);
-
-            if settings.ai_model.trim().eq_ignore_ascii_case("local") {
-                let ai = LocalCommandAiProvider::from_environment()?;
-                core.complete_voice(&ai)?.text
-            } else {
-                let api_key = settings.openai_api_key.clone()
-                    .ok_or_else(|| "OpenAI AI selected: add your OpenAI API key in Settings.".to_string())?;
-                let ai = OpenAiProvider::from_config(api_key, settings.ai_model)?;
-                core.complete_voice(&ai)?.text
-            }
+            core.snapshot_messages()
         };
+
+        let response = if settings.ai_model.trim().eq_ignore_ascii_case("local") {
+            let ai = LocalCommandAiProvider::from_environment()?;
+            ai.complete(&AiRequest { messages })?.text
+        } else {
+            let api_key = settings.openai_api_key.clone()
+                .ok_or_else(|| "OpenAI AI selected: add your OpenAI API key in Settings.".to_string())?;
+            let ai = OpenAiProvider::from_config(api_key, settings.ai_model)?;
+            ai.complete(&AiRequest { messages })?.text
+        };
+
+        {
+            let mut core = core
+                .lock()
+                .map_err(|_| "Core state is unavailable.".to_string())?;
+            core.add_assistant_response(crate::session::MessageSource::Voice, response.clone());
+        }
 
         Ok(VoiceTurnResult { transcript, response })
     }
