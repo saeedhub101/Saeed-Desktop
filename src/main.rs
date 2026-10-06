@@ -10,9 +10,7 @@ use std::time::Duration;
 use saeed_desktop::ai::OpenAiProvider;
 use saeed_desktop::core::SaeedCore;
 use saeed_desktop::storage::{AppSettings, Storage};
-use saeed_desktop::voice::{
-    AudioPlayer, MicrophoneRecorder, VoiceController,
-};
+use saeed_desktop::voice::{MicrophoneRecorder, VoiceController};
 use slint::SharedString;
 
 slint::include_modules!();
