@@ -28,6 +28,7 @@ fn show_error(window: &AppWindow, message: String) {
 }
 
 fn update_voice_ui(weak: &slint::Weak<AppWindow>, button: &str, status: &str) {
+    let weak = weak.clone();
     let button = button.to_string();
     let status = status.to_string();
     let _ = slint::invoke_from_event_loop(move || {
@@ -116,7 +117,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             if let Some(window) = weak.upgrade() {
                 window.set_settings_status("Saved securely. API key is stored in Windows Credential Manager.".into());
                 window.set_settings_open(false);
-                window.set_status("Ready • Settings saved");
+                window.set_status("Ready • Settings saved".into());
             }
         });
     }
