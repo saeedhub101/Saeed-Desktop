@@ -5,6 +5,9 @@
 //! renderer can consume them without introducing an animation loop.
 
 pub mod asset;
+pub mod renderer;
+
+pub use renderer::GlbCharacterRenderer;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CharacterVisibility {
