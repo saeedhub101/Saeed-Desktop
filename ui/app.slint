@@ -10,18 +10,35 @@ export component AppWindow inherits Window {
     in-out property <string> status: "Ready";
     in-out property <string> conversation: "Saeed is ready. Chat and voice share one conversation.";
     in-out property <string> voice_button_text: "Mic ON";
+    in-out property <bool> settings_open: false;
+    in-out property <string> settings_api_key: "";
+    in-out property <string> settings_ai_model: "gpt-6-luna";
+    in-out property <string> settings_stt_model: "gpt-4o-mini-transcribe";
+    in-out property <string> settings_tts_model: "gpt-4o-mini-tts";
+    in-out property <string> settings_tts_voice: "alloy";
+    in-out property <string> settings_api_key_status: "Stored securely in Windows Credential Manager";
+    in-out property <string> settings_status: "";
 
     callback send-message(string);
     callback toggle-voice();
+    callback save-settings(string, string, string, string, string);
+    callback clear-api-key();
 
-    VerticalBox {
+    if !settings_open: VerticalBox {
         padding: 28px;
         spacing: 18px;
 
-        Text {
-            text: "Saeed";
-            font-size: 34px;
-            horizontal-alignment: center;
+        HorizontalBox {
+            Text {
+                text: "Saeed";
+                font-size: 34px;
+                horizontal-stretch: 1;
+            }
+
+            Button {
+                text: "Settings";
+                clicked => { root.settings_open = true; }
+            }
         }
 
         Text {
@@ -63,12 +80,83 @@ export component AppWindow inherits Window {
 
                     Button {
                         text: voice_button_text;
-                        clicked => {
-                            root.toggle-voice();
-                        }
+                        clicked => { root.toggle-voice(); }
                     }
                 }
             }
         }
+    }
+
+    if settings_open: VerticalBox {
+        padding: 28px;
+        spacing: 14px;
+
+        HorizontalBox {
+            Text {
+                text: "Settings";
+                font-size: 30px;
+                horizontal-stretch: 1;
+            }
+
+            Button {
+                text: "Back";
+                clicked => { root.settings_open = false; }
+            }
+        }
+
+        Text { text: "OpenAI"; font-size: 18px; }
+
+        Text { text: "API key (stored in Windows Credential Manager)"; }
+        LineEdit {
+            input-type: password;
+            placeholder-text: "Enter API key to save or replace";
+        }
+
+        Text {
+            text: settings_api_key_status;
+            font-size: 12px;
+        }
+
+        Text { text: "AI model"; }
+        LineEdit { text: settings_ai_model; }
+
+        Text { text: "Speech-to-text model"; }
+        LineEdit { text: settings_stt_model; }
+
+        Text { text: "Text-to-speech model"; }
+        LineEdit { text: settings_tts_model; }
+
+        Text { text: "TTS voice"; }
+        LineEdit { text: settings_tts_voice; }
+
+        HorizontalBox {
+            spacing: 10px;
+
+            Button {
+                text: "Save";
+                clicked => {
+                    root.save-settings(
+                        settings_api_key,
+                        settings_ai_model,
+                        settings_stt_model,
+                        settings_tts_model,
+                        settings_tts_voice
+                    );
+                }
+            }
+
+            Button {
+                text: "Remove API key";
+                clicked => { root.clear-api-key(); }
+            }
+        }
+
+        Text {
+            text: settings_status;
+            wrap: word-wrap;
+            font-size: 12px;
+        }
+
+        Rectangle { vertical-stretch: 1; }
     }
 }
