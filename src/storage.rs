@@ -14,6 +14,7 @@ pub struct AppSettings {
     pub stt_model: String,
     pub tts_model: String,
     pub tts_voice: String,
+    pub character_paused: bool,
 }
 
 impl Default for AppSettings {
@@ -24,6 +25,7 @@ impl Default for AppSettings {
             stt_model: "gpt-4o-mini-transcribe".to_string(),
             tts_model: "gpt-4o-mini-tts".to_string(),
             tts_voice: "alloy".to_string(),
+            character_paused: false,
         }
     }
 }
@@ -90,6 +92,9 @@ impl Storage {
         if let Some(value) = self.get("tts_voice")? {
             settings.tts_voice = value;
         }
+        if let Some(value) = self.get("character_paused")? {
+            settings.character_paused = value == "true";
+        }
 
         settings.openai_api_key = read_openai_api_key().map_err(|error| {
             rusqlite::Error::ToSqlConversionFailure(Box::new(std::io::Error::other(error)))
@@ -103,6 +108,7 @@ impl Storage {
         self.set("stt_model", &settings.stt_model)?;
         self.set("tts_model", &settings.tts_model)?;
         self.set("tts_voice", &settings.tts_voice)?;
+        self.set("character_paused", if settings.character_paused { "true" } else { "false" })?;
 
         if let Some(api_key) = settings.openai_api_key.as_deref() {
             write_openai_api_key(api_key).map_err(|error| {
@@ -213,5 +219,6 @@ mod tests {
         let settings = AppSettings::default();
         assert!(settings.openai_api_key.is_none());
         assert_eq!(settings.tts_voice, "alloy");
+        assert!(!settings.character_paused);
     }
 }
