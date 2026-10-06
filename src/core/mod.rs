@@ -16,6 +16,13 @@ impl SaeedCore {
         }
     }
 
+    pub fn from_messages(messages: Vec<Message>) -> Self {
+        Self {
+            version: env!("CARGO_PKG_VERSION"),
+            session: Session::restore(messages),
+        }
+    }
+
     pub fn add_message(
         &mut self,
         role: impl Into<String>,
