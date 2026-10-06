@@ -19,6 +19,16 @@ const VOICE_ACTIVATION_THRESHOLD: f32 = 0.06;
 const VOICE_SILENCE_TIMEOUT: Duration = Duration::from_millis(900);
 const VOICE_MINIMUM_SPEECH: Duration = Duration::from_millis(120);
 
+fn show_error_if_alive(weak: &slint::Weak<AppWindow>, message: &str) {
+    let weak = weak.clone();
+    let message = message.to_string();
+    let _ = slint::invoke_from_event_loop(move || {
+        if let Some(window) = weak.upgrade() {
+            show_error(&window, message);
+        }
+    });
+}
+
 fn show_error(window: &AppWindow, message: String) {
     window.set_conversation(format!("Saeed: {message}").into());
     window.set_status("Error".into());
@@ -160,70 +170,73 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             let settings = {
                 let Ok(settings) = settings.lock() else {
-                    if let Some(window) = weak.upgrade() {
-                        show_error(&window, "Settings state is unavailable.".to_string());
-                    }
+                    show_error_if_alive(&weak, "Settings state is unavailable.");
                     return;
                 };
                 settings.clone()
             };
 
-            let Some(window) = weak.upgrade() else {
-                return;
-            };
+            let core = Arc::clone(&core);
+            let weak = weak.clone();
 
-            let Ok(mut core) = core.lock() else {
-                show_error(&window, "Core state is unavailable.".to_string());
-                return;
-            };
-
-            core.add_chat_message("user", &text);
-            if let Some(message) = core.messages().last() {
-                if let Ok(storage) = Storage::open_default() {
-                    let _ = storage.append_message(message);
+            let _ = slint::invoke_from_event_loop({
+                let weak = weak.clone();
+                move || {
+                    if let Some(window) = weak.upgrade() {
+                        window.set_status("Thinking…".into());
+                    }
                 }
-            }
-            window.set_status("Thinking…".into());
+            });
 
-            let result = if settings.ai_model.trim().eq_ignore_ascii_case("local") {
-                let provider = match LocalCommandAiProvider::from_environment() {
-                    Ok(provider) => provider,
-                    Err(error) => {
-                        show_error(&window, error);
-                        return;
-                    }
-                };
-                core.complete_chat(&provider)
-            } else {
-                let Some(api_key) = settings.openai_api_key.clone() else {
-                    window.set_settings_open(true);
-                    show_error(&window, "Add your OpenAI API key in Settings first.".to_string());
-                    return;
-                };
-                let provider = match OpenAiProvider::from_config(api_key, settings.ai_model) {
-                    Ok(provider) => provider,
-                    Err(error) => {
-                        show_error(&window, error);
-                        return;
-                    }
-                };
-                core.complete_chat(&provider)
-            };
+            thread::spawn(move || {
+                let result = (|| -> Result<String, String> {
+                    let mut core = core.lock()
+                        .map_err(|_| "Core state is unavailable.".to_string())?;
 
-            match result {
-                Ok(response) => {
+                    core.add_chat_message("user", &text);
                     if let Some(message) = core.messages().last() {
                         if let Ok(storage) = Storage::open_default() {
-                            let _ = storage.append_message(message);
+                            storage.append_message(message)
+                                .map_err(|error| format!("Could not persist message: {error}"))?;
                         }
                     }
-                    window.set_conversation(
-                        format!("You: {text}\n\nSaeed: {}", response.text).into(),
-                    );
-                    window.set_status("Ready • Shared conversation".into());
-                }
-                Err(error) => show_error(&window, error),
-            }
+
+                    let response = if settings.ai_model.trim().eq_ignore_ascii_case("local") {
+                        let provider = LocalCommandAiProvider::from_environment()?;
+                        core.complete_chat(&provider)?
+                    } else {
+                        let api_key = settings.openai_api_key.clone()
+                            .ok_or_else(|| "Add your OpenAI API key in Settings first.".to_string())?;
+                        let provider = OpenAiProvider::from_config(api_key, settings.ai_model)?;
+                        core.complete_chat(&provider)?
+                    };
+
+                    if let Some(message) = core.messages().last() {
+                        if let Ok(storage) = Storage::open_default() {
+                            storage.append_message(message)
+                                .map_err(|error| format!("Could not persist response: {error}"))?;
+                        }
+                    }
+
+                    Ok(response.text)
+                })();
+
+                let weak = weak.clone();
+                let text = text.clone();
+                let _ = slint::invoke_from_event_loop(move || {
+                    if let Some(window) = weak.upgrade() {
+                        match result {
+                            Ok(response) => {
+                                window.set_conversation(
+                                    format!("You: {text}\n\nSaeed: {response}").into(),
+                                );
+                                window.set_status("Ready • Shared conversation".into());
+                            }
+                            Err(error) => show_error(window.as_ref(), error),
+                        }
+                    }
+                });
+            });
         });
     }
 
