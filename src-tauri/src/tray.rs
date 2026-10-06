@@ -109,11 +109,8 @@ pub fn install(app: &AppHandle) -> tauri::Result<()> {
                 refresh(app);
             }
             "hide" => {
-                let _ = crate::app::tray_hide_character(
-                    app.clone(),
-                    app.state(),
-                );
-                refresh(app);
+                // The tray menu is refreshed once the window is really gone.
+                let _ = crate::app::tray_hide_character(app.clone());
             }
             "change" => choose(app.clone()),
             "small" => scale(app, CharacterScale::Small),
@@ -179,15 +176,11 @@ pub fn install(app: &AppHandle) -> tauri::Result<()> {
                     .get_webview_window("character")
                     .is_some()
                 {
-                    let _ = crate::app::tray_hide_character(
-                        app.clone(),
-                        app.state(),
-                    );
+                    let _ = crate::app::tray_hide_character(app.clone());
                 } else {
                     let _ = windows_mgr::show_character(app);
+                    refresh(app);
                 }
-
-                refresh(&app);
             }
         })
         .build(app)?;
