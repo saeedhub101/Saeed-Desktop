@@ -63,7 +63,7 @@ jobs:
           Copy-Item assets/Saeed_AI-3D.glb dist/assets/Saeed_AI-3D.glb
           Compress-Archive -Path dist/Saeed.exe,dist/assets -DestinationPath Saeed-Desktop.zip
 
-      - name: Upload prototype
+      - name: Upload Saeed
         uses: actions/upload-artifact@v4
         with:
           name: Saeed-Desktop
