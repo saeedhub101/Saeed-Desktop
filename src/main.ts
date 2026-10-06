@@ -24,6 +24,8 @@ let model: THREE.Object3D | null = null;
 let renderFrame = 0;
 let rotating = false;
 let disposed = false;
+const raycaster = new THREE.Raycaster();
+const pointer = new THREE.Vector2();
 
 function setStatus(message: string) {
   status.textContent = message;
@@ -115,6 +117,7 @@ async function load() {
 
   const bytes = await invoke<number[]>("get_character_model");
   if (!bytes.length) {
+    await windowHandle.setIgnoreCursorEvents(true).catch(() => {});
     setStatus("No character model. Choose Change Character from the Saeed tray menu.");
     requestRender();
     return;
@@ -125,6 +128,7 @@ async function load() {
     const gltf = await new GLTFLoader().parseAsync(buffer, "");
     model = gltf.scene;
     scene.add(model);
+    await windowHandle.setIgnoreCursorEvents(true).catch(() => {});
     setStatus("");
     fitModel();
   } catch (error) {
@@ -152,6 +156,19 @@ window.addEventListener("resize", () => {
 window.addEventListener("pointerdown", async () => {
   if (!model) return;
   await windowHandle.startDragging().catch(() => {});
+});
+
+windowHandle.listen("cursor-probe", async (event) => {
+  const p = event.payload as { x: number; y: number; width: number; height: number };
+  if (!model || !camera) {
+    await windowHandle.setIgnoreCursorEvents(true).catch(() => {});
+    return;
+  }
+  pointer.x = (p.x / Math.max(1, p.width)) * 2 - 1;
+  pointer.y = -(p.y / Math.max(1, p.height)) * 2 + 1;
+  raycaster.setFromCamera(pointer, camera);
+  const hit = raycaster.intersectObject(model, true).length > 0;
+  await windowHandle.setIgnoreCursorEvents(!hit).catch(() => {});
 });
 
 windowHandle.listen("debug-rotate-once", () => {
