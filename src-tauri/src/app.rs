@@ -21,7 +21,7 @@ use crate::{
     logging::Logger,
     settings::{AppSettings, CharacterScale},
     tray,
-    windows_mgr::{self, HideState},
+    windows_mgr::HideState,
 };
 
 pub struct AppState {
@@ -228,7 +228,7 @@ fn get_character_model(
 }
 
 #[tauri::command]
-fn set_character_scale(
+pub(crate) fn set_character_scale(
     app: AppHandle,
     scale: CharacterScale,
     state: State<'_, AppState>,
@@ -271,7 +271,7 @@ pub(crate) fn set_low_power(
 }
 
 #[tauri::command]
-fn import_character(
+pub(crate) fn import_character(
     app: AppHandle,
     source: String,
     state: State<'_, AppState>,
@@ -338,7 +338,7 @@ fn import_character(
 }
 
 #[tauri::command]
-fn debug_rotate_once(app: AppHandle) -> Result<(), String> {
+pub(crate) fn debug_rotate_once(app: AppHandle) -> Result<(), String> {
     if let Some(window) = app.get_webview_window("character") {
         window
             .emit("debug-rotate-once", ())
@@ -350,8 +350,6 @@ fn debug_rotate_once(app: AppHandle) -> Result<(), String> {
 
 #[tauri::command]
 fn hide_character(app: AppHandle) -> Result<(), String> {
-    // Runs the cleanup handshake on a worker thread so the main/UI thread
-    // stays free to deliver the page's acknowledgement.
     windows_mgr::hide_character(&app);
     Ok(())
 }
@@ -366,44 +364,7 @@ fn character_cleanup_done(state: State<'_, AppState>) {
 }
 
 #[tauri::command]
-fn show_character(app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
-    windows_mgr::create_character_window(&app)?;
-
-    let dir = data_dir(&app)?;
-    let mut settings = state
-        .settings
-        .lock()
-        .map_err(|_| "settings lock".to_string())?;
-
-    settings.character.visible = true;
-    settings.save(&dir)?;
-    drop(settings);
-    state.logger.info("Character window shown");
-    tray::refresh(&app);
-
-    Ok(())
+fn show_character(app: AppHandle) -> Result<(), String> {
+    windows_mgr::show_character(&app)
 }
 
-pub fn tray_set_character_scale(
-    app: AppHandle,
-    scale: CharacterScale,
-    state: State<'_, AppState>,
-) -> Result<(), String> {
-    set_character_scale(app, scale, state)
-}
-
-pub fn tray_import_character(
-    app: AppHandle,
-    source: String,
-    state: State<'_, AppState>,
-) -> Result<String, String> {
-    import_character(app, source, state)
-}
-
-pub fn tray_hide_character(app: AppHandle) -> Result<(), String> {
-    hide_character(app)
-}
-
-pub fn tray_debug_rotate_once(app: AppHandle) -> Result<(), String> {
-    debug_rotate_once(app)
-}
