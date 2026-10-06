@@ -63,13 +63,15 @@ export component AppWindow inherits Window {
                     Button {
                         text: "Voice";
                         clicked => {
-                            root.status = "Voice input is connected to the same conversation.";
+                            root.status = "Voice input will use this same conversation.";
                         }
                     }
 
                     Button {
                         text: "Settings";
-                        clicked => { root.status = "Settings ready"; }
+                        clicked => {
+                            root.status = "Set OPENAI_API_KEY, then restart Saeed.";
+                        }
                     }
                 }
             }
