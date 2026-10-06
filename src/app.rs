@@ -5,7 +5,7 @@ use std::sync::{
 use std::thread;
 use std::time::Duration;
 
-use saeed_desktop::ai::{AiProvider, AiRequest, LocalCommandAiProvider, OpenAiProvider};
+use saeed_desktop::ai::{AiProvider, AiRequest, LocalCommandAiProvider, OpenAiProvider, OpenAiCompatibleProvider};
 use saeed_desktop::core::SaeedCore;
 use saeed_desktop::character::{CharacterRuntime, CharacterState, CharacterVisibility};
 use saeed_desktop::storage::Storage;
@@ -422,14 +422,16 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
                         core.snapshot_messages()
                     };
 
-                    let response = if settings.ai_model.trim().eq_ignore_ascii_case("local") {
-                        let provider = LocalCommandAiProvider::from_environment()?;
-                        provider.complete(&AiRequest { messages })?
-                    } else {
-                        let api_key = settings.openai_api_key.clone()
-                            .ok_or_else(|| "Add your OpenAI API key in Settings first.".to_string())?;
-                        let provider = OpenAiProvider::from_config(api_key, settings.ai_model)?;
-                        provider.complete(&AiRequest { messages })?
+                    let response = match settings.ai_provider.trim().to_ascii_lowercase().as_str() {
+                        "local" => LocalCommandAiProvider::from_environment()?.complete(&AiRequest { messages })?,
+                        "groq" => {
+                            let key = settings.groq_api_key.clone().ok_or_else(|| "Groq AI selected: add the Groq API key in Settings.".to_string())?;
+                            OpenAiCompatibleProvider::new(key, settings.ai_model, "https://api.groq.com/openai/v1/chat/completions").complete(&AiRequest { messages })?
+                        }
+                        _ => {
+                            let key = settings.openai_api_key.clone().ok_or_else(|| "Add your OpenAI API key in Settings first.".to_string())?;
+                            OpenAiProvider::from_config(key, settings.ai_model)?.complete(&AiRequest { messages })?
+                        }
                     };
 
                     let response_text = response.text.clone();
