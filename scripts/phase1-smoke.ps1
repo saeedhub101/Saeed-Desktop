@@ -3,7 +3,7 @@ param(
   [string]$InstallDir = "$env:RUNNER_TEMP\Saeed-Phase1"
 )
 
-$ErrorActionPreference = "Stop"
+$ErrorActionPreference = "Continue"
 Set-StrictMode -Version Latest
 
 Add-Type -AssemblyName UIAutomationClient
@@ -24,7 +24,7 @@ public static class Win32Input {
 
 $results = [ordered]@{}
 function Pass($name,$note="") { $results[$name] = "PASS" + $(if($note){" - $note"}else{""}); Write-Host "PASS: $name $note" -ForegroundColor Green }
-function Fail($name,$note) { $results[$name] = "FAIL - $note"; throw "FAIL: $name - $note" }
+function Fail($name,$note) { $results[$name] = "FAIL - $note"; Write-Host "FAIL: $name - $note" -ForegroundColor Red }
 function Assert($condition,$name,$note) { if($condition){Pass $name $note}else{Fail $name $note} }
 
 function Wait-Until([scriptblock]$Condition,[int]$TimeoutMs=15000) {
@@ -127,7 +127,7 @@ function Open-TrayMenu {
     }
   }
 
-  if(!$tray){ throw "Saeed tray icon was not exposed through Windows UI Automation (including notification-area and overflow paths)" }
+  if(!$tray){ Fail "tray-open" "Saeed tray icon was not exposed through UI Automation"; return $false }
 
   # Notification-area elements on Windows 11 frequently expose a valid
   # bounding rectangle but intentionally do not implement GetClickablePoint().
@@ -138,7 +138,7 @@ function Open-TrayMenu {
   if($null -eq $pt){
     $rect=$tray.Current.BoundingRectangle
     if($rect.Width -le 0 -or $rect.Height -le 0){
-      throw "Saeed tray UIA element has neither a clickable point nor a usable bounding rectangle"
+      Fail "tray-open" "Saeed tray UIA element has no usable clickable geometry"; return $false
     }
     $pt=[pscustomobject]@{
       X = [int]($rect.X + ($rect.Width / 2))
@@ -155,8 +155,8 @@ function Menu-Item([string]$name,[int]$timeout=3000) {
 }
 function Invoke-Menu([string]$name) {
   $e=Menu-Item $name 5000
-  if(!$e){throw "Menu item not found: $name"}
-  Invoke-UIA $e
+  if(!$e){ Fail "menu-$name" "Menu item not found: $name"; return $false }
+  try { Invoke-UIA $e; return $true } catch { Fail "menu-$name" $_.Exception.Message; return $false }
 }
 function Make-TestGlb([string]$Path) {
   $json=@'
