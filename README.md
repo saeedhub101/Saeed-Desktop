@@ -133,3 +133,19 @@ When no external GLB is installed, CharacterRuntime uses a built-in procedural h
 ### Verification Decision
 
 A release is not considered complete merely because Rust compilation succeeds. Windows CI must pass cargo check, cargo test, release packaging, and the Windows startup smoke test. Functional boundaries are covered by unit tests where they can be deterministic; hardware/API dependent voice and provider behavior remains explicitly reported at runtime rather than being replaced by fake tests.
+
+
+## Current Product Build — Real Runtime
+
+The repository now contains the real Saeed desktop runtime rather than a UI-only prototype:
+- The original Saeed 3D GLB is packaged under `assets/Saeed_AI-3D.glb` and shipped beside `Saeed.exe`.
+- Chat and Voice use one Core/Session and persist the same conversation.
+- AI, STT and TTS are independently selectable between the implemented OpenAI/Groq/ElevenLabs/local adapters.
+- Provider credentials are stored through Windows Credential Manager.
+- Character visibility, pause, rest pose and procedural behavior are owned by one CharacterRuntime.
+- Character behavior is scheduled as individual event-loop actions; there is no permanent render worker.
+- CI must pass check, all tests, release build, Windows startup smoke test and packaged artifact creation before a build is considered valid.
+
+### Implementation Decisions
+
+When a requirement was ambiguous, the implementation favors a single owner, real runtime behavior, persistent state, and the smallest number of dependencies. UI controls are not considered complete unless they invoke an implemented runtime operation. Hardware/API-dependent behavior is covered by deterministic provider/runtime tests where hardware or credentials are unavailable to CI.
