@@ -89,6 +89,11 @@ pub fn run() {
                 }
             }
 
+            // The tray is installed before the character window so the app can
+            // always provide a recovery path. Refresh once startup has created
+            // the window so Show/Hide reflects the real lifecycle state.
+            tray::refresh(app.handle());
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
