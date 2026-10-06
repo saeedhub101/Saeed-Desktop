@@ -13,7 +13,6 @@ use saeed_desktop::voice::{MicrophoneRecorder, VoiceController};
 use slint::SharedString;
 use crate::AppWindow;
 
-slint::include_modules!();
 
 const VOICE_ACTIVATION_THRESHOLD: f32 = 0.06;
 const VOICE_SILENCE_TIMEOUT: Duration = Duration::from_millis(900);
