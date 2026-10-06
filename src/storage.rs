@@ -10,6 +10,11 @@ const OPENAI_KEY_USER: &str = "openai-api-key";
 #[derive(Debug, Clone)]
 pub struct AppSettings {
     pub openai_api_key: Option<String>,
+    pub groq_api_key: Option<String>,
+    pub elevenlabs_api_key: Option<String>,
+    pub ai_provider: String,
+    pub stt_provider: String,
+    pub tts_provider: String,
     pub ai_model: String,
     pub stt_model: String,
     pub tts_model: String,
@@ -21,6 +26,11 @@ impl Default for AppSettings {
     fn default() -> Self {
         Self {
             openai_api_key: None,
+            groq_api_key: None,
+            elevenlabs_api_key: None,
+            ai_provider: "openai".to_string(),
+            stt_provider: "openai".to_string(),
+            tts_provider: "openai".to_string(),
             ai_model: "gpt-6-luna".to_string(),
             stt_model: "gpt-4o-mini-transcribe".to_string(),
             tts_model: "gpt-4o-mini-tts".to_string(),
@@ -80,6 +90,9 @@ impl Storage {
 
     pub fn load_settings(&self) -> Result<AppSettings> {
         let mut settings = AppSettings::default();
+        if let Some(value) = self.get("ai_provider")? { settings.ai_provider = value; }
+        if let Some(value) = self.get("stt_provider")? { settings.stt_provider = value; }
+        if let Some(value) = self.get("tts_provider")? { settings.tts_provider = value; }
         if let Some(value) = self.get("ai_model")? {
             settings.ai_model = value;
         }
@@ -99,11 +112,16 @@ impl Storage {
         settings.openai_api_key = read_openai_api_key().map_err(|error| {
             rusqlite::Error::ToSqlConversionFailure(Box::new(std::io::Error::other(error)))
         })?;
+        settings.groq_api_key = read_secret("groq-api-key").map_err(|error| rusqlite::Error::ToSqlConversionFailure(Box::new(std::io::Error::other(error))))?;
+        settings.elevenlabs_api_key = read_secret("elevenlabs-api-key").map_err(|error| rusqlite::Error::ToSqlConversionFailure(Box::new(std::io::Error::other(error))))?;
 
         Ok(settings)
     }
 
     pub fn save_settings(&self, settings: &AppSettings) -> Result<()> {
+        self.set("ai_provider", &settings.ai_provider)?;
+        self.set("stt_provider", &settings.stt_provider)?;
+        self.set("tts_provider", &settings.tts_provider)?;
         self.set("ai_model", &settings.ai_model)?;
         self.set("stt_model", &settings.stt_model)?;
         self.set("tts_model", &settings.tts_model)?;
@@ -114,6 +132,12 @@ impl Storage {
             write_openai_api_key(api_key).map_err(|error| {
                 rusqlite::Error::ToSqlConversionFailure(Box::new(std::io::Error::other(error)))
             })?;
+        }
+        if let Some(key) = settings.groq_api_key.as_deref() {
+            write_secret("groq-api-key", key).map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(std::io::Error::other(e))))?;
+        }
+        if let Some(key) = settings.elevenlabs_api_key.as_deref() {
+            write_secret("elevenlabs-api-key", key).map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(std::io::Error::other(e))))?;
         }
 
         Ok(())
@@ -190,6 +214,22 @@ fn read_openai_api_key() -> std::result::Result<Option<String>, String> {
         Err(keyring::Error::NoEntry) => Ok(None),
         Err(error) => Err(format!("Could not read OpenAI API key: {error}")),
     }
+}
+
+fn read_secret(user: &str) -> std::result::Result<Option<String>, String> {
+    let entry = Entry::new(KEYRING_SERVICE, user).map_err(|e| format!("Credential Manager unavailable: {e}"))?;
+    match entry.get_password() {
+        Ok(v) => { let v=v.trim().to_string(); if v.is_empty(){Ok(None)}else{Ok(Some(v))} }
+        Err(keyring::Error::NoEntry) => Ok(None),
+        Err(e) => Err(format!("Could not read credential: {e}")),
+    }
+}
+
+fn write_secret(user: &str, value: &str) -> std::result::Result<(), String> {
+    let value=value.trim();
+    if value.is_empty(){ return Err("Credential cannot be empty.".into()); }
+    Entry::new(KEYRING_SERVICE,user).map_err(|e| format!("Credential Manager unavailable: {e}"))?
+        .set_password(value).map_err(|e| format!("Could not save credential: {e}"))
 }
 
 fn write_openai_api_key(value: &str) -> std::result::Result<(), String> {
