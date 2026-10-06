@@ -162,6 +162,29 @@ pub fn install(app: &AppHandle) -> tauri::Result<()> {
         })
         .build(app)?;
 
+    if let Some(tray) = app.tray_by_id("default") {
+        match tray.rect() {
+            Ok(Some(rect)) => {
+                if let Some(state) = app.try_state::<AppState>() {
+                    state.logger.info(&format!(
+                        "Tray icon rect: x={} y={} width={} height={}",
+                        rect.position.x, rect.position.y, rect.size.width, rect.size.height
+                    ));
+                }
+            }
+            Ok(None) => {
+                if let Some(state) = app.try_state::<AppState>() {
+                    state.logger.error("Tray icon rect unavailable");
+                }
+            }
+            Err(error) => {
+                if let Some(state) = app.try_state::<AppState>() {
+                    state.logger.error(&format!("Tray icon rect query failed: {error}"));
+                }
+            }
+        }
+    }
+
     Ok(())
 }
 
