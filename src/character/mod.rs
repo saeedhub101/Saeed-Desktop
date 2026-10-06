@@ -80,8 +80,10 @@ impl CharacterRuntime {
 
     fn ensure_renderer(&mut self) -> Result<(), String> {
         if self.renderer.is_some() { return Ok(()); }
-        let path = self.asset_path.clone().ok_or_else(|| "No Saeed GLB character asset was found.".to_string())?;
-        self.renderer = Some(GlbCharacterRenderer::from_path(path, self.width, self.height)?);
+        self.renderer = Some(match self.asset_path.clone() {
+            Some(path) => GlbCharacterRenderer::from_path(path, self.width, self.height)?,
+            None => GlbCharacterRenderer::procedural(self.width, self.height),
+        });
         Ok(())
     }
 
