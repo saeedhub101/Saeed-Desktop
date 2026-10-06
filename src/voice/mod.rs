@@ -8,6 +8,10 @@ pub mod controller;
 pub use controller::{VoiceController, VoiceTurnResult};
 
 use std::io::Cursor;
+use std::fs;
+use std::path::PathBuf;
+use std::process::Command;
+use std::time::{SystemTime, UNIX_EPOCH};
 use std::sync::{Arc, Mutex};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
@@ -314,6 +318,67 @@ impl AudioPlayer {
     }
 }
 
+fn local_temp_path(extension: &str) -> PathBuf {
+    let stamp = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or_default();
+    std::env::temp_dir().join(format!("saeed-{}-{stamp}.{extension}", std::process::id()))
+}
+
+fn run_local_command(command: &str, input: &PathBuf, output: Option<&PathBuf>) -> Result<std::process::Output, String> {
+    let mut command_line = command.replace("{input}", &input.to_string_lossy());
+    if let Some(output) = output { command_line = command_line.replace("{output}", &output.to_string_lossy()); }
+    Command::new("cmd").args(["/C", &command_line]).output().map_err(|e| format!("Local voice command could not start: {e}"))
+}
+
+pub struct LocalCommandSpeechToText { command: String }
+impl LocalCommandSpeechToText {
+    pub fn from_environment() -> Result<Self, String> {
+        let command = std::env::var("SAEED_LOCAL_STT_COMMAND").map_err(|_| "Local STT is selected but SAEED_LOCAL_STT_COMMAND is not configured.".to_string())?;
+        let command = command.trim().to_string();
+        if command.is_empty() { return Err("SAEED_LOCAL_STT_COMMAND is empty.".to_string()); }
+        Ok(Self { command })
+    }
+}
+impl SpeechToText for LocalCommandSpeechToText {
+    fn transcribe(&self, audio: &[u8]) -> Result<String, String> {
+        if audio.is_empty() { return Err("Voice input is empty.".to_string()); }
+        let input = local_temp_path("wav");
+        fs::write(&input, audio).map_err(|e| format!("Could not create local STT input: {e}"))?;
+        let result = run_local_command(&self.command, &input, None);
+        let _ = fs::remove_file(&input);
+        let output = result?;
+        if !output.status.success() { return Err(format!("Local STT command failed: {}", String::from_utf8_lossy(&output.stderr).trim())); }
+        let text = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        if text.is_empty() { return Err("Local STT returned no text.".to_string()); }
+        Ok(text)
+    }
+}
+
+pub struct LocalCommandTextToSpeech { command: String }
+impl LocalCommandTextToSpeech {
+    pub fn from_environment() -> Result<Self, String> {
+        let command = std::env::var("SAEED_LOCAL_TTS_COMMAND").map_err(|_| "Local TTS is selected but SAEED_LOCAL_TTS_COMMAND is not configured.".to_string())?;
+        let command = command.trim().to_string();
+        if command.is_empty() { return Err("SAEED_LOCAL_TTS_COMMAND is empty.".to_string()); }
+        Ok(Self { command })
+    }
+}
+impl TextToSpeech for LocalCommandTextToSpeech {
+    fn synthesize(&self, text: &str) -> Result<Vec<u8>, String> {
+        let text = text.trim();
+        if text.is_empty() { return Err("TTS text is empty.".to_string()); }
+        let input = local_temp_path("txt");
+        let output = local_temp_path("wav");
+        fs::write(&input, text).map_err(|e| format!("Could not create local TTS input: {e}"))?;
+        let result = run_local_command(&self.command, &input, Some(&output));
+        let _ = fs::remove_file(&input);
+        let command_output = result?;
+        if !command_output.status.success() { let _ = fs::remove_file(&output); return Err(format!("Local TTS command failed: {}", String::from_utf8_lossy(&command_output.stderr).trim())); }
+        let audio = fs::read(&output).map_err(|e| format!("Local TTS did not create audio: {e}"))?;
+        let _ = fs::remove_file(&output);
+        if audio.is_empty() { return Err("Local TTS returned empty audio.".to_string()); }
+        Ok(audio)
+    }
+}
 pub struct OpenAiSpeechToText {
     api_key: String,
     model: String,
