@@ -1,10 +1,10 @@
-pub mod asset;
-
 //! Lightweight character runtime boundary.
 //!
 //! Rendering is intentionally separate from motion state. The controller below
 //! is dependency-free and produces on-demand procedural motion intents; a future
 //! renderer can consume them without introducing an animation loop.
+
+pub mod asset;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CharacterVisibility {
