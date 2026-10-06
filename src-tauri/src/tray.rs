@@ -153,7 +153,7 @@ pub fn install(app: &AppHandle) -> tauri::Result<()> {
                 let app = tray.app_handle();
 
                 if app.get_webview_window("character").is_some() {
-                    let _ = crate::app::tray_hide_character(app.clone());
+                    windows_mgr::hide_character(app);
                 } else {
                     let _ = windows_mgr::show_character(app);
                     refresh(app);
