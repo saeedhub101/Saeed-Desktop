@@ -10,7 +10,7 @@ use std::time::Duration;
 use saeed_desktop::ai::{AiProvider, AiRequest, LocalCommandAiProvider, OpenAiProvider};
 use saeed_desktop::core::SaeedCore;
 use saeed_desktop::character::{CharacterState, CharacterVisibility, ProceduralCharacterController};
-use saeed_desktop::storage::{AppSettings, Storage};
+use saeed_desktop::storage::Storage;
 use saeed_desktop::voice::{MicrophoneRecorder, VoiceController};
 use slint::SharedString;
 
@@ -182,7 +182,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             };
 
             let core = Arc::clone(&core);
-            let character = Arc::clone(&character);
+            let character = Arc::clone(&character_for_chat);
             if let Ok(mut character) = character.lock() {
                 character.set_state(CharacterState::Interacting);
             }
