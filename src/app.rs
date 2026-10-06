@@ -399,13 +399,6 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
                         Ok(result) => {
                             let transcript = result.transcript;
                             let response = result.response;
-                            if let Ok(core) = core.lock() {
-                                if let Ok(storage) = Storage::open_default() {
-                                    for message in core.messages().iter().rev().take(2).rev() {
-                                        let _ = storage.append_message(message);
-                                    }
-                                }
-                            }
                             let transcript_for_ui = transcript.clone();
                             let response_for_ui = response.clone();
                             let weak_for_ui = weak.clone();
