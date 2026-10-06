@@ -58,10 +58,9 @@ pub fn create_character_window(app: &AppHandle) -> Result<(), String> {
     };
 
     let scale_factor = app
-        .monitor_from_point(position.x as f64, position.y as f64)?
-        .map(|monitor| monitor.scale_factor())
-        .transpose()
+        .monitor_from_point(position.x as f64, position.y as f64)
         .map_err(|e| e.to_string())?
+        .map(|monitor| monitor.scale_factor())
         .unwrap_or(1.0);
 
     let logical_width = f64::from(width) / scale_factor;
