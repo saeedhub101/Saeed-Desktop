@@ -131,64 +131,58 @@ public static class TraySmokeKeys {
       return $true
     }
 
-    # 1 Show Saeed / Hide Saeed
-    Assert (InvokeMenuByDownCount 1) "tray-menu-show-hide-command" "native keyboard selected the Show/Hide command"
-    $shown=Wait-Until { $z=Get-WindowHandle;if($z -ne [IntPtr]::Zero){$z}else{$null}} 5000
-    Assert ($shown -ne $null) "tray-menu-show-command" "Show Saeed recreated the character window"
-
-    # 2 Character Size: Small, Medium, Large are tested by selecting their menu positions.
-    # Menu layout: Show/Hide, separator, Change Character, separator, Small, Medium, Large,
-    # separator, Always on Top, Low Power, separator, Debug, Rotate once, separator, Quit.
-    # Native popup traversal skips separators when selecting enabled menu items.
-    $sizeCounts=@{small=5;medium=6;large=7}
-    foreach($size in @("small","medium","large")){
+    # Native keyboard navigation; no UI Automation.
+    function InvokeTopMenu([int]$downCount,[switch]$OpenSubmenu,[int]$SubmenuDown=0) {
       $p=OpenMenuNative
-      if($p -eq $null){ Fail "tray-size-$size" "could not open native tray menu"; continue }
-      for($i=0;$i -lt $sizeCounts[$size];$i++){ SendKey 0x28 }
+      if($p -eq $null){ return $false }
+      for($i=0;$i -lt $downCount;$i++){ SendKey 0x28 }
+      if($OpenSubmenu){ SendKey 0x27; for($i=0;$i -lt $SubmenuDown;$i++){ SendKey 0x28 } }
       SendKey 0x0D
+      return $true
+    }
+
+    # Show/Hide
+    Assert (InvokeTopMenu 0) "tray-menu-show-hide-command" "native menu selected the enabled Show/Hide command"
+    $shown=Wait-Until { $z=Get-WindowHandle;if($z -ne [IntPtr]::Zero){$z}else{$null}} 5000
+    Assert ($shown -ne $null) "tray-menu-show-command" "Show/Hide command left the character window available"
+
+    # Character Size -> Small, Medium, Large
+    $sizes=@{small=0;medium=1;large=2}
+    foreach($size in @("small","medium","large")){
+      $ok=InvokeTopMenu 2 -OpenSubmenu -SubmenuDown $sizes[$size]
+      Assert $ok "tray-size-$size-command" "native menu selected Character Size -> $size"
       $expected=@{small=280;medium=360;large=460}[$size]
       $ok=Wait-Until {
-        $z=Get-WindowHandle
-        if($z -eq [IntPtr]::Zero){return $null}
+        $z=Get-WindowHandle; if($z -eq [IntPtr]::Zero){return $null}
         $rr=New-Object TraySmokeWin32+RECT
-        if([TraySmokeWin32]::GetWindowRect($z,[ref]$rr)){
-          if(($rr.Right-$rr.Left) -eq $expected){$true}else{$null}
-        }
+        if([TraySmokeWin32]::GetWindowRect($z,[ref]$rr)){ if(($rr.Right-$rr.Left) -eq $expected){$true}else{$null} }
       } 5000
-      Assert $ok "tray-size-$size" "native menu command applied $size character size"
+      Assert $ok "tray-size-$size-applied" "Character Size -> $size applied the expected window size"
     }
 
-    # 3 Always on Top toggle. Select it, then select it again to restore the original state.
-    for($pass=1;$pass -le 2;$pass++){
-      $ok=InvokeMenuByDownCount 9
-      Assert $ok "tray-always-on-top-toggle-$pass" "native menu selected Always on Top (toggle $pass)"
-    }
+    # Always on Top toggle twice.
+    Assert (InvokeTopMenu 3) "tray-always-on-top-toggle-1" "native menu selected Always on Top"
+    Assert (InvokeTopMenu 3) "tray-always-on-top-toggle-2" "native menu selected Always on Top again"
 
-    # 4 Low Power toggle. Toggle on then back off.
-    for($pass=1;$pass -le 2;$pass++){
-      $ok=InvokeMenuByDownCount 10
-      Assert $ok "tray-low-power-toggle-$pass" "native menu selected Low Power (toggle $pass)"
-    }
+    # Low Power toggle twice.
+    Assert (InvokeTopMenu 4) "tray-low-power-toggle-1" "native menu selected Low Power Mode"
+    Assert (InvokeTopMenu 4) "tray-low-power-toggle-2" "native menu selected Low Power Mode again"
 
-    # 5 Debug -> Rotate once. Selecting Rotate once must keep Saeed alive and the window present.
-    $ok=InvokeMenuByDownCount 13
-    Assert $ok "tray-rotate-once-command" "native menu selected Debug -> Rotate once"
+    # Debug -> Rotate once.
+    Assert (InvokeTopMenu 5 -OpenSubmenu -SubmenuDown 0) "tray-rotate-once-command" "native menu selected Debug -> Rotate once"
     Assert ((Get-WindowHandle) -ne [IntPtr]::Zero) "tray-rotate-once-stable" "character remained alive after Rotate once"
 
-    # 6 Change Character. Open the real Windows file dialog, then cancel; this verifies
-    # the actual menu command reaches the application without UI Automation.
-    $p=OpenMenuNative
-    if($p -ne $null){
-      # Change Character is the third enabled command.
-      SendKey 0x28; SendKey 0x28; SendKey 0x0D
-      Start-Sleep -Milliseconds 500
-      $dialog=[TraySmokeWin32]::FindWindow("#32770",$null)
-      Assert ($dialog -ne [IntPtr]::Zero) "tray-change-character-dialog" "Change Character opened the native file dialog"
-      if($dialog -ne [IntPtr]::Zero){ SendKey 0x1B }
-    } else {
-      Fail "tray-change-character-dialog" "could not open native tray menu"
-    }
+    # Change Character -> native file dialog, then cancel.
+    Assert (InvokeTopMenu 1) "tray-change-character-command" "native menu selected Change Character"
+    Start-Sleep -Milliseconds 500
+    $dialog=[TraySmokeWin32]::FindWindow("#32770",$null)
+    Assert ($dialog -ne [IntPtr]::Zero) "tray-change-character-dialog" "Change Character opened the native file dialog"
+    if($dialog -ne [IntPtr]::Zero){ SendKey 0x1B }
 
+    # Quit is final and must terminate the application.
+    Assert (InvokeTopMenu 6) "tray-quit-command" "native menu selected Quit"
+    $exited=Wait-Until { if((Get-SaeedProcess).Count -eq 0){$true}else{$null}} 10000
+    Assert $exited "tray-quit" "Quit removed the Saeed process"
     Assert ((Get-SaeedProcess).Count -eq 1) "tray-process-lifetime" "tray interactions did not terminate the application"
   }
 }
