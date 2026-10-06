@@ -109,10 +109,13 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
     // It advances one procedural action at a time; there is no render loop or worker thread.
     let character_timer = Rc::new(RefCell::new(slint::Timer::default()));
     {
+        // Single-shot scheduling: one action is rendered, then the next action is scheduled.
+        // This avoids a permanent high-frequency render loop.
         let timer = Rc::clone(&character_timer);
         let character = Arc::clone(&character);
         let weak = window.as_weak();
-        timer.borrow_mut().start(slint::TimerMode::Repeated, Duration::from_millis(700), move || {
+        let timer_weak = Rc::downgrade(&character_timer);
+        timer.borrow_mut().start(slint::TimerMode::SingleShot, Duration::from_secs(2), move || {
             let Ok(mut runtime) = character.lock() else { return; };
             if runtime.visibility() != CharacterVisibility::Visible || runtime.is_paused() {
                 return;
@@ -121,6 +124,13 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
                 Ok(Some(image)) => update_character_image(weak.clone(), image),
                 Ok(None) => {}
                 Err(error) => show_error_if_alive(&weak, &format!("Character runtime error: {error}")),
+            }
+            if let Some(timer) = timer_weak.upgrade() {
+                timer.borrow_mut().start(
+                    slint::TimerMode::SingleShot,
+                    Duration::from_millis(1200),
+                    move || {},
+                );
             }
         });
     }
