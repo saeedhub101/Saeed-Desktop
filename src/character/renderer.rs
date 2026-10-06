@@ -94,7 +94,6 @@ impl GlbCharacterRenderer {
                 .map(|it|it.map(Mat4::from_gltf_array).collect())
                 .unwrap_or_else(||vec![Mat4::identity();skin.joints().count()]);
             let joints=skin.joints().enumerate().map(|(i,node)|Joint{
-                node_index:node.index(),
                 name:node.name().unwrap_or("").to_string(),
                 inverse_bind:inverse.get(i).copied().unwrap_or_else(Mat4::identity),
                 base_world:worlds.get(&node.index()).copied().unwrap_or_else(Mat4::identity),
