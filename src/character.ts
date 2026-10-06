@@ -26,7 +26,6 @@ export const sizes: Record<Scale, number> = {
 const MASK_SIZE = 64;
 const HIT_ALPHA = 12;
 
-
 export class CharacterScene {
   scene = new THREE.Scene();
   camera = new THREE.PerspectiveCamera(32, 1, 0.01, 100);
@@ -38,6 +37,10 @@ export class CharacterScene {
   private alphaMask = new Uint8Array(MASK_SIZE * MASK_SIZE * 4);
   private maskTarget: THREE.WebGLRenderTarget;
   private lowPower: boolean;
+  private disposed = false;
+
+  /** Called after every mask refresh so hit-testing can be re-run. */
+  onMaskUpdated: (() => void) | null = null;
 
   constructor(canvas: HTMLCanvasElement, lowPower: boolean) {
     this.lowPower = lowPower;
@@ -84,6 +87,10 @@ export class CharacterScene {
   }
 
   private renderFrame(): void {
+    if (this.disposed) {
+      return;
+    }
+
     this.renderer.setRenderTarget(this.maskTarget);
     this.renderer.render(this.scene, this.camera);
     this.renderer.readRenderTargetPixels(
@@ -94,6 +101,8 @@ export class CharacterScene {
       MASK_SIZE,
       this.alphaMask,
     );
+
+    this.onMaskUpdated?.();
 
     this.renderer.setRenderTarget(null);
     this.renderer.render(this.scene, this.camera);
@@ -150,18 +159,25 @@ export class CharacterScene {
     this.recreateRenderer();
   }
 
+  /** Idempotent: safe to call from the cleanup handshake and beforeunload. */
   dispose(): void {
+    if (this.disposed) {
+      return;
+    }
+
+    this.disposed = true;
+    this.scheduler.dispose();
+    this.onMaskUpdated = null;
+
     if (this.model) {
       this.disposeObject(this.model);
+      this.scene.remove(this.model);
+      this.model = null;
     }
 
     this.maskTarget.dispose();
     this.renderer.dispose();
-    this.renderer
-      .getContext()
-      .getExtension("WEBGL_lose_context")
-      ?.loseContext();
-    this.scheduler.dispose();
+    this.renderer.forceContextLoss();
   }
 
   private disposeObject(root: THREE.Object3D): void {
@@ -172,6 +188,11 @@ export class CharacterScene {
       }
 
       mesh.geometry.dispose();
+
+      const skinned = node as THREE.SkinnedMesh;
+      if (skinned.isSkinnedMesh) {
+        skinned.skeleton.dispose();
+      }
 
       for (const material of Array.isArray(mesh.material)
         ? mesh.material
@@ -248,6 +269,10 @@ export class CharacterScene {
 
     const bytes = await invoke<ArrayBuffer>("get_character_model");
 
+    if (this.disposed) {
+      return;
+    }
+
     if (!bytes || bytes.byteLength === 0) {
       this.placeholder();
       this.scheduler.requestRender();
@@ -259,6 +284,12 @@ export class CharacterScene {
         bytes,
         "",
         (gltf) => {
+          if (this.disposed) {
+            this.disposeObject(gltf.scene);
+            resolve();
+            return;
+          }
+
           this.model = gltf.scene;
           this.scene.add(this.model);
           this.fit(this.model);
