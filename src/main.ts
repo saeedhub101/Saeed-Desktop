@@ -20,6 +20,44 @@ const windowHandle = getCurrentWindow();
 let scene: CharacterScene | null = null;
 let statusTimer: number | undefined;
 let contextRecoveryAttempts = 0;
+let shuttingDown = false;
+
+type Probe = { x: number; y: number; width: number; height: number };
+
+// Matches the window's initial set_ignore_cursor_events(false).
+let ignoringCursor = false;
+let lastProbe: Probe | null = null;
+
+function applyHitTest(): void {
+  if (!scene || !lastProbe) {
+    return;
+  }
+
+  const { x, y, width, height } = lastProbe;
+  const shouldIgnore = !scene.hitTest(x, y, width, height);
+
+  // Only talk to the OS when the state actually changes.
+  if (shouldIgnore === ignoringCursor) {
+    return;
+  }
+
+  ignoringCursor = shouldIgnore;
+  windowHandle.setIgnoreCursorEvents(shouldIgnore).catch(() => {
+    ignoringCursor = !shouldIgnore;
+  });
+}
+
+/** Releases all 3D resources; Rust waits for this before destroying the window. */
+function shutdownScene(): void {
+  shuttingDown = true;
+
+  if (statusTimer !== undefined) {
+    clearTimeout(statusTimer);
+  }
+
+  scene?.dispose();
+  scene = null;
+}
 
 function message(text: string): void {
   status.textContent = text;
@@ -48,6 +86,11 @@ function installContextRecovery(): void {
     "webglcontextlost",
     (event) => {
       event.preventDefault();
+
+      // Context loss caused by our own cleanup must not trigger recovery.
+      if (shuttingDown) {
+        return;
+      }
 
       if (contextRecoveryAttempts >= 1) {
         message(
@@ -95,24 +138,21 @@ async function init(): Promise<void> {
 
   installContextRecovery();
 
-  await listen<{
-    x: number;
-    y: number;
-    width: number;
-    height: number;
-  }>("cursor-probe", (event) => {
-    if (!scene) {
-      return;
+  scene.onMaskUpdated = applyHitTest;
+
+  await listen<Probe>("cursor-probe", (event) => {
+    lastProbe = event.payload;
+    applyHitTest();
+  });
+
+  await listen("prepare-destroy", async () => {
+    try {
+      shutdownScene();
+    } catch (error) {
+      console.error(error);
+    } finally {
+      await invoke("character_cleanup_done");
     }
-
-    const hit = scene.hitTest(
-      event.payload.x,
-      event.payload.y,
-      event.payload.width,
-      event.payload.height,
-    );
-
-    void windowHandle.setIgnoreCursorEvents(!hit);
   });
 
   canvas.addEventListener(
@@ -156,8 +196,9 @@ async function init(): Promise<void> {
 
   await listen(
     "character-reload",
-    () =>
-      scene?.load().catch((error) => {
+    () => {
+      resizeScene(window.innerWidth);
+      return scene?.load().catch((error) => {
         console.error(error);
         void invoke("log_error", {
           message: String(error),
@@ -165,7 +206,8 @@ async function init(): Promise<void> {
         message(
           "Saeed could not load the character model.",
         );
-      }),
+      });
+    },
   );
 
   try {
@@ -182,13 +224,10 @@ async function init(): Promise<void> {
   }
 }
 
-window.addEventListener(
-  "beforeunload",
-  () => scene?.dispose(),
-);
+window.addEventListener("beforeunload", () => shutdownScene());
 
 window.addEventListener("resize", () => {
-  scene?.scheduler.requestRender();
+  resizeScene(window.innerWidth);
 });
 
 void init().catch((error) => {
