@@ -85,8 +85,39 @@ function Invoke-UIA([System.Windows.Automation.AutomationElement]$e) {
   throw "Element has no invokable UIA pattern: $($e.Current.Name)"
 }
 function Open-TrayMenu {
-  $tray=Find-Element "Saeed" 8000 ([System.Windows.Automation.ControlType]::Button)
-  if(!$tray){ throw "Saeed tray icon was not exposed through Windows UI Automation" }
+  # Windows 11 may expose notification icons with AutomationId=NotifyItemIcon
+  # rather than as a root-level Button named by tooltip. Search notification-area paths.
+  $tray=Wait-Until {
+    $root=[System.Windows.Automation.AutomationElement]::RootElement
+    $name=New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::NameProperty,"Saeed")
+    $button=New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::ControlTypeProperty,[System.Windows.Automation.ControlType]::Button)
+    $cond=New-Object System.Windows.Automation.AndCondition($name,$button)
+    $root.FindFirst([System.Windows.Automation.TreeScope]::Descendants,$cond)
+  } 4000
+  if(!$tray){
+    $shell=[Win32Input]::FindWindow("Shell_TrayWnd",$null)
+    if($shell -ne [IntPtr]::Zero){
+      $trayRoot=[System.Windows.Automation.AutomationElement]::FromHandle($shell)
+      $buttons=$trayRoot.FindAll([System.Windows.Automation.TreeScope]::Descendants,
+        (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::ControlTypeProperty,[System.Windows.Automation.ControlType]::Button)))
+      foreach($candidate in $buttons){
+        try {
+          if(($candidate.Current.AutomationId -eq "NotifyItemIcon" -and $candidate.Current.Name -match "(?i)Saeed") -or $candidate.Current.Name -match "(?i)^Saeed(?:$|\s)"){
+            $tray=$candidate; break
+          }
+        } catch {}
+      }
+    }
+  }
+  if(!$tray){
+    $overflow=Find-Element "Show hidden icons" 3000 ([System.Windows.Automation.ControlType]::Button)
+    if($overflow){
+      try { Invoke-UIA $overflow } catch {}
+      Start-Sleep -Milliseconds 500
+      $tray=Find-Element "Saeed" 3000 ([System.Windows.Automation.ControlType]::Button)
+    }
+  }
+  if(!$tray){ throw "Saeed tray icon was not exposed through Windows UI Automation (including notification-area and overflow paths)" }
   $pt=$tray.GetClickablePoint()
   [Win32Input]::SetCursorPos([int]$pt.X,[int]$pt.Y)|Out-Null
   [Win32Input]::mouse_event([Win32Input]::RIGHTDOWN,0,0,0,[UIntPtr]::Zero)
