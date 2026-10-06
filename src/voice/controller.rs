@@ -8,7 +8,7 @@ use std::sync::{Arc, Mutex};
 
 use crate::ai::{AiProvider, AiRequest, LocalCommandAiProvider, OpenAiProvider};
 use crate::core::SaeedCore;
-use crate::storage::AppSettings;
+use crate::storage::{AppSettings, Storage};
 
 use super::{
     AudioPlayer, LocalCommandSpeechToText, LocalCommandTextToSpeech,
@@ -49,6 +49,12 @@ impl VoiceController {
                 .lock()
                 .map_err(|_| "Core state is unavailable.".to_string())?;
             core.add_voice_message("user", &transcript);
+            if let Some(message) = core.messages().last() {
+                let storage = Storage::open_default()
+                    .map_err(|error| format!("Could not open conversation storage: {error}"))?;
+                storage.append_message(message)
+                    .map_err(|error| format!("Could not persist voice message: {error}"))?;
+            }
             core.snapshot_messages()
         };
 
@@ -67,6 +73,12 @@ impl VoiceController {
                 .lock()
                 .map_err(|_| "Core state is unavailable.".to_string())?;
             core.add_assistant_response(crate::session::MessageSource::Voice, response.clone());
+            if let Some(message) = core.messages().last() {
+                let storage = Storage::open_default()
+                    .map_err(|error| format!("Could not open conversation storage: {error}"))?;
+                storage.append_message(message)
+                    .map_err(|error| format!("Could not persist voice response: {error}"))?;
+            }
         }
 
         Ok(VoiceTurnResult { transcript, response })
