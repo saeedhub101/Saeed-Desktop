@@ -1,8 +1,11 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use std::cell::RefCell;
-use std::rc::Rc;
-use std::sync::{Arc, Mutex};
+use std::sync::{
+    Arc, Mutex,
+    atomic::{AtomicBool, Ordering},
+};
+use std::thread;
+use std::time::Duration;
 
 use saeed_desktop::ai::OpenAiProvider;
 use saeed_desktop::core::SaeedCore;
@@ -14,15 +17,31 @@ use slint::SharedString;
 
 slint::include_modules!();
 
+const VOICE_ACTIVATION_THRESHOLD: f32 = 0.06;
+const VOICE_SILENCE_TIMEOUT: Duration = Duration::from_millis(900);
+const VOICE_MINIMUM_SPEECH: Duration = Duration::from_millis(120);
+
 fn show_error(window: &AppWindow, message: String) {
     window.set_conversation(format!("Saeed: {message}").into());
     window.set_status("Voice unavailable".into());
 }
 
+fn update_voice_ui(weak: &slint::Weak<AppWindow>, button: &str, status: &str) {
+    let button = button.to_string();
+    let status = status.to_string();
+    let _ = slint::invoke_from_event_loop(move || {
+        if let Some(window) = weak.upgrade() {
+            window.set_voice_button_text(button.into());
+            window.set_status(status.into());
+        }
+    });
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let window = AppWindow::new()?;
     let core = Arc::new(Mutex::new(SaeedCore::new()));
-    let recorder = Rc::new(RefCell::new(MicrophoneRecorder::new()));
+    let voice_active = Arc::new(AtomicBool::new(false));
+    let voice_worker_running = Arc::new(AtomicBool::new(false));
 
     let weak = window.as_weak();
     let core_for_chat = Arc::clone(&core);
@@ -60,65 +79,107 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     });
 
     {
-        let recorder = Rc::clone(&recorder);
+        let active = Arc::clone(&voice_active);
+        let worker_running = Arc::clone(&voice_worker_running);
         let core = Arc::clone(&core);
         let weak = window.as_weak();
 
         window.on_toggle_voice(move || {
-            let Some(window) = weak.upgrade() else {
-                return;
-            };
-
-            let is_recording = recorder.borrow().is_recording();
-
-            if !is_recording {
-                match recorder.borrow_mut().start() {
-                    Ok(()) => {
-                        window.set_voice_button_text("Stop".into());
-                        window.set_status("Listening…".into());
-                    }
-                    Err(error) => show_error(&window, error),
-                }
+            if active.load(Ordering::Acquire) {
+                active.store(false, Ordering::Release);
+                window.set_voice_button_text("Mic ON".into());
+                window.set_status("Microphone off".into());
                 return;
             }
 
-            let audio = match recorder.borrow_mut().stop() {
-                Ok(audio) => audio,
-                Err(error) => {
-                    window.set_voice_button_text("Voice".into());
-                    show_error(&window, error);
-                    return;
-                }
-            };
+            active.store(true, Ordering::Release);
+            window.set_voice_button_text("Mic OFF".into());
+            window.set_status("Listening…".into());
 
-            window.set_voice_button_text("Voice".into());
-            window.set_status("Transcribing…".into());
+            if worker_running.swap(true, Ordering::AcqRel) {
+                return;
+            }
 
+            let active = Arc::clone(&active);
+            let worker_running = Arc::clone(&worker_running);
             let core = Arc::clone(&core);
-            let weak = window.as_weak();
+            let weak = weak.clone();
 
-            std::thread::spawn(move || {
-                let result = process_voice_turn(&core, &audio);
+            thread::spawn(move || {
+                let mut recorder = MicrophoneRecorder::new();
 
-                let _ = slint::invoke_from_event_loop(move || {
-                    let Some(window) = weak.upgrade() else {
-                        return;
+                while active.load(Ordering::Acquire) {
+                    if let Err(error) = recorder.start() {
+                        update_voice_ui(&weak, "Mic ON", &format!("Microphone unavailable: {error}"));
+                        active.store(false, Ordering::Release);
+                        break;
+                    }
+
+                    update_voice_ui(&weak, "Mic OFF", "Listening…");
+
+                    let audio = match recorder.capture_utterance(
+                        &active,
+                        VOICE_ACTIVATION_THRESHOLD,
+                        VOICE_SILENCE_TIMEOUT,
+                        VOICE_MINIMUM_SPEECH,
+                    ) {
+                        Ok(Some(audio)) => audio,
+                        Ok(None) => break,
+                        Err(error) => {
+                            update_voice_ui(&weak, "Mic ON", &format!("Microphone error: {error}"));
+                            active.store(false, Ordering::Release);
+                            break;
+                        }
                     };
 
-                    match result {
-                        Ok((transcript, response)) => {
-                            window.set_conversation(
-                                format!(
-                                    "You (Voice): {transcript}\n\nSaeed: {}",
-                                    response
-                                )
-                                .into(),
-                            );
-                            window.set_status("Ready • Shared conversation".into());
-                        }
-                        Err(error) => show_error(&window, error),
+                    if !active.load(Ordering::Acquire) {
+                        break;
                     }
-                });
+
+                    update_voice_ui(&weak, "Mic OFF", "Transcribing…");
+
+                    match process_voice_turn(&core, &audio) {
+                        Ok((transcript, response)) => {
+                            let transcript_for_ui = transcript.clone();
+                            let response_for_ui = response.clone();
+                            let _ = slint::invoke_from_event_loop(move || {
+                                if let Some(window) = weak.upgrade() {
+                                    window.set_conversation(
+                                        format!(
+                                            "You (Voice): {transcript_for_ui}\n\nSaeed: {response_for_ui}"
+                                        )
+                                        .into(),
+                                    );
+                                    window.set_status("Speaking…".into());
+                                }
+                            });
+
+                            if let Err(error) = speak_response(&response) {
+                                update_voice_ui(&weak, "Mic ON", &format!("TTS unavailable: {error}"));
+                                active.store(false, Ordering::Release);
+                                break;
+                            }
+
+                            if active.load(Ordering::Acquire) {
+                                update_voice_ui(&weak, "Mic OFF", "Listening…");
+                            }
+                        }
+                        Err(error) => {
+                            update_voice_ui(&weak, "Mic ON", &format!("Voice error: {error}"));
+                            active.store(false, Ordering::Release);
+                            break;
+                        }
+                    }
+                }
+
+                let _ = recorder.stop_stream_for_shutdown();
+                worker_running.store(false, Ordering::Release);
+
+                if active.load(Ordering::Acquire) {
+                    active.store(false, Ordering::Release);
+                }
+
+                update_voice_ui(&weak, "Mic ON", "Ready • Shared conversation");
             });
         });
     }
@@ -145,9 +206,11 @@ fn process_voice_turn(
         core.complete_voice(&ai)?.text
     };
 
-    let tts = OpenAiTextToSpeech::from_environment()?;
-    let spoken_audio = tts.synthesize(&response)?;
-    AudioPlayer::play(&spoken_audio)?;
-
     Ok((transcript, response))
+}
+
+fn speak_response(response: &str) -> Result<(), String> {
+    let tts = OpenAiTextToSpeech::from_environment()?;
+    let spoken_audio = tts.synthesize(response)?;
+    AudioPlayer::play(&spoken_audio)
 }
