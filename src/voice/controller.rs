@@ -6,7 +6,7 @@
 
 use std::sync::{Arc, Mutex};
 
-use crate::ai::OpenAiProvider;
+use crate::ai::{AiProvider, LocalCommandAiProvider, OpenAiProvider};
 use crate::core::SaeedCore;
 use crate::storage::AppSettings;
 
