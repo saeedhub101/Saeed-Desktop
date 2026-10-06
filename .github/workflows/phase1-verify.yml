@@ -1,52 +1,159 @@
 name: Phase 1 verification
+
 on:
   push:
     branches: [main]
+
 jobs:
   windows:
     runs-on: windows-latest
+
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+          cache: npm
+
       - uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            src-tauri/target
+          key: windows-cargo-v1
+          restore-keys: |
+            windows-cargo-
+
+      - name: Generate package lock when bootstrapping
+        shell: pwsh
+        run: |
+          if (!(Test-Path "package-lock.json")) {
+            npm install --package-lock-only
+          }
+
       - name: Install dependencies
-        run: npm install
-      - name: Generate icons
+        run: npm ci
+
+      - name: Generate icons once
         run: npm run icons
+
       - name: Verify generated icon set
         shell: pwsh
         run: |
-          $files = @("src-tauri/icons/32x32.png","src-tauri/icons/128x128.png","src-tauri/icons/128x128@2x.png","src-tauri/icons/icon.png","src-tauri/icons/icon.ico")
-          foreach ($f in $files) { if (!(Test-Path $f)) { throw "Missing generated icon: $f" } }
-          if (!(Test-Path "src/assets/icon.png")) { throw "Missing copied source icon" }
+          $files = @(
+            "src-tauri/icons/32x32.png",
+            "src-tauri/icons/128x128.png",
+            "src-tauri/icons/128x128@2x.png",
+            "src-tauri/icons/icon.png",
+            "src-tauri/icons/icon.ico"
+          )
+
+          foreach ($f in $files) {
+            if (!(Test-Path $f)) {
+              throw "Missing generated icon: $f"
+            }
+          }
+
+          if (!(Test-Path "src/assets/icon.png")) {
+            throw "Missing copied source icon"
+          }
+
+      - name: Rust format and checks
+        working-directory: src-tauri
+        run: |
+          cargo fmt --all -- --check
+          cargo check
+          cargo clippy --all-targets --all-features -- -D warnings
+
+      - name: Frontend format and type checks
+        run: |
+          npx prettier --check "src/**/*.{ts,css,json}"
+          npm run check
+
       - name: Build Windows installer
-        run: npm run build
+        run: npm run tauri build
+
       - name: Verify Windows artifacts
         shell: pwsh
         run: |
-          $exe = Get-ChildItem -Path src-tauri/target/release -Filter "saeed.exe" -Recurse | Select-Object -First 1
-          if (!$exe) { throw "saeed.exe not found" }
-          $nsis = Get-ChildItem -Path src-tauri/target/release/bundle/nsis -Filter "*.exe" | Select-Object -First 1
-          if (!$nsis) { throw "NSIS installer not found" }
+          $exe = Get-ChildItem -Path src-tauri/target/release -Filter "saeed.exe" -Recurse |
+            Select-Object -First 1
+
+          if (!$exe) {
+            throw "saeed.exe not found"
+          }
+
+          $nsis = Get-ChildItem -Path src-tauri/target/release/bundle/nsis -Filter "*.exe" |
+            Select-Object -First 1
+
+          if (!$nsis) {
+            throw "NSIS installer not found"
+          }
+
           Write-Host "EXE=$($exe.FullName)"
           Write-Host "INSTALLER=$($nsis.FullName)"
+
       - name: Verify static VC runtime dependencies
         shell: pwsh
         run: |
-          $exe = Get-ChildItem -Path src-tauri/target/release -Filter "saeed.exe" -Recurse | Select-Object -First 1
-          if (!$exe) { throw "saeed.exe not found" }
-          $dumpbin = Get-ChildItem "$env:ProgramFiles\Microsoft Visual Studio" -Filter dumpbin.exe -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
-          if (!$dumpbin) { $dumpbin = Get-ChildItem "${env:ProgramFiles(x86)}\Microsoft Visual Studio" -Filter dumpbin.exe -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1 }
-          if (!$dumpbin) { throw "dumpbin.exe not found" }
+          $exe = Get-ChildItem -Path src-tauri/target/release -Filter "saeed.exe" -Recurse |
+            Select-Object -First 1
+
+          if (!$exe) {
+            throw "saeed.exe not found"
+          }
+
+          $dumpbin = Get-ChildItem "$env:ProgramFiles\Microsoft Visual Studio" -Filter dumpbin.exe -Recurse -ErrorAction SilentlyContinue |
+            Select-Object -First 1
+
+          if (!$dumpbin) {
+            $dumpbin = Get-ChildItem "${env:ProgramFiles(x86)}\Microsoft Visual Studio" -Filter dumpbin.exe -Recurse -ErrorAction SilentlyContinue |
+              Select-Object -First 1
+          }
+
+          if (!$dumpbin) {
+            throw "dumpbin.exe not found"
+          }
+
           $deps = & $dumpbin.FullName /DEPENDENTS $exe.FullName 2>&1 | Out-String
           Write-Host $deps
-          if ($deps -match "(?i)vcruntime140\.dll|msvcp140\.dll") { throw "Executable still depends on dynamic VC runtime" }
+
+          if ($deps -match "(?i)vcruntime140\.dll|msvcp140\.dll") {
+            throw "Executable still depends on dynamic VC runtime"
+          }
+
           Write-Host "Static VC runtime dependency check: PASS"
+
       - name: Single-instance source verification
         shell: pwsh
         run: |
           $app = Get-Content src-tauri/src/app.rs -Raw
-          if ($app -notmatch "tauri_plugin_single_instance::init") { throw "Single instance plugin not initialized" }
-          if ($app -notmatch "windows_mgr::show_character") { throw "Second launch does not restore character" }
+
+          if ($app -notmatch "tauri_plugin_single_instance::init") {
+            throw "Single instance plugin not initialized"
+          }
+
+          if ($app -notmatch "windows_mgr::show_character") {
+            throw "Second launch does not restore character"
+          }
+
+      - name: Upload Windows artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: saeed-windows-installer
+          path: |
+            src-tauri/target/release/saeed.exe
+            src-tauri/target/release/bundle/nsis/*.exe
+
+      - name: Upload generated lockfiles
+        uses: actions/upload-artifact@v4
+        with:
+          name: generated-lockfiles
+          path: |
+            package-lock.json
+            src-tauri/Cargo.lock
