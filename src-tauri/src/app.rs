@@ -48,7 +48,7 @@ pub(crate) fn data_dir(app: &AppHandle) -> Result<PathBuf, String> {
 pub fn run() {
     let result = tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _, _| {
-            let _ = show_character(app);
+            let _ = show_character_core(app);
         }))
         .setup(|app| {
             let dir = data_dir(app.handle())?;
@@ -206,7 +206,7 @@ pub(crate) fn destroy_character_window(app: &AppHandle) {
     });
 }
 
-pub(crate) fn show_character(app: &AppHandle) -> Result<(), String> {
+pub(crate) fn show_character_core(app: &AppHandle) -> Result<(), String> {
     if app.get_webview_window("character").is_none() {
         create_character_window(app)?;
     }
@@ -215,7 +215,7 @@ pub(crate) fn show_character(app: &AppHandle) -> Result<(), String> {
     Ok(())
 }
 
-pub(crate) fn hide_character(app: AppHandle) {
+pub(crate) fn hide_character_core(app: AppHandle) {
     destroy_character_window(&app);
 }
 
@@ -286,7 +286,7 @@ fn get_character_model(app: AppHandle, state: State<'_, AppState>) -> Result<Res
 }
 
 #[tauri::command]
-fn set_character_scale(
+pub(crate) fn set_character_scale_core(
     app: AppHandle,
     scale: CharacterScale,
     state: State<'_, AppState>,
@@ -304,7 +304,7 @@ fn set_character_scale(
 }
 
 #[tauri::command]
-fn set_low_power(
+pub(crate) fn set_low_power_core(
     app: AppHandle,
     enabled: bool,
     state: State<'_, AppState>,
@@ -321,7 +321,7 @@ fn set_low_power(
 }
 
 #[tauri::command]
-fn import_character(
+pub(crate) fn import_character_core(
     app: AppHandle,
     source: String,
     state: State<'_, AppState>,
@@ -363,15 +363,12 @@ fn hide_character(app: AppHandle) -> Result<(), String> {
 
 #[tauri::command]
 fn show_character(app: AppHandle) -> Result<(), String> {
-    show_character(&app)
+    show_character_core(&app)
 }
 
 #[tauri::command]
-fn debug_rotate_once(app: AppHandle) -> Result<(), String> {
-    if let Some(window) = app.get_webview_window("character") {
-        window.emit("debug-rotate-once", ()).map_err(|e| e.to_string())?;
-    }
-    Ok(())
+pub(crate) fn debug_rotate_once_core(app: AppHandle) -> Result<(), String> {
+    debug_rotate_once_core(app)
 }
 
 #[tauri::command]
