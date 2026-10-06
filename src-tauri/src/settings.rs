@@ -93,10 +93,33 @@ impl AppSettings {
             .sync_all()
             .map_err(|e| e.to_string())?;
 
-        if path.exists() {
-            fs::remove_file(&path).map_err(|e| e.to_string())?;
+        // Replace the destination atomically. On Windows, removing the old
+        // file first creates a window where settings.json does not exist.
+        // MoveFileEx with REPLACE_EXISTING + WRITE_THROUGH provides the
+        // required atomic replacement semantics for the settings file.
+        #[cfg(windows)]
+        {
+            use std::os::windows::ffi::OsStrExt;
+            use windows_sys::Win32::Storage::FileSystem::{
+                MoveFileExW, MOVEFILE_REPLACE_EXISTING, MOVEFILE_WRITE_THROUGH,
+            };
+
+            let from: Vec<u16> = temp.as_os_str().encode_wide().chain(Some(0)).collect();
+            let to: Vec<u16> = path.as_os_str().encode_wide().chain(Some(0)).collect();
+            let ok = unsafe {
+                MoveFileExW(
+                    from.as_ptr(),
+                    to.as_ptr(),
+                    MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH,
+                )
+            };
+            if ok == 0 {
+                return Err(std::io::Error::last_os_error().to_string());
+            }
+            return Ok(());
         }
 
+        #[cfg(not(windows))]
         fs::rename(temp, path).map_err(|e| e.to_string())
     }
 }
