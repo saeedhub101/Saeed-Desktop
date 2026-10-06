@@ -88,6 +88,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             clear_character_image(&window);
         }
     }
+    let voice_active = Arc::new(AtomicBool::new(false));
+    let voice_worker_running = Arc::new(AtomicBool::new(false));
     let weak = window.as_weak();
 
     {
@@ -217,6 +219,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     {
         let settings = Arc::clone(&settings);
         let core = Arc::clone(&core);
+        let character_for_chat = Arc::clone(&character);
         let weak = window.as_weak();
 
         window.on_send_message(move |text: SharedString| {
@@ -234,7 +237,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             };
 
             let core = Arc::clone(&core);
-            let character = Arc::clone(&character);
+            let character = Arc::clone(&character_for_chat);
             if let Ok(mut runtime) = character.lock() {
                 runtime.set_state(CharacterState::Interacting);
                 if let Ok(Some(image)) = runtime.render_next() {
