@@ -14,8 +14,7 @@ function Wait-Until([scriptblock]$Condition,[int]$TimeoutMs=15000){
   return $null
 }
 function Get-SaeedProcess { @(Get-Process -Name "Saeed" -ErrorAction SilentlyContinue | Where-Object {$_.Path -and $_.Path -eq (Join-Path $InstallDir "Saeed.exe")}) }
-function Get-WindowHandle {
-  Add-Type @"
+Add-Type @"
 using System;
 using System.Runtime.InteropServices;
 public static class TraySmokeWin32 {
@@ -29,6 +28,8 @@ public static class TraySmokeWin32 {
  public const uint LEFTDOWN=0x0002,LEFTUP=0x0004,RIGHTDOWN=0x0008,RIGHTUP=0x0010;
 }
 "@
+
+function Get-WindowHandle {
   $h=[TraySmokeWin32]::FindWindow($null,"Saeed")
   if($h -ne [IntPtr]::Zero){return $h}
   $p=Get-SaeedProcess|Select-Object -First 1
