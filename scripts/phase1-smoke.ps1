@@ -166,9 +166,16 @@ public static class Win32ClosePhase1 {
 }
 "@
 
+$webviewPids=@(Get-DescendantPids $proc.Id)
+Assert ($webviewPids.Count -gt 0) "webview2-processes-before-hide" "character window has descendant WebView processes"
 [Win32ClosePhase1]::PostMessage($h,0x0010,[IntPtr]::Zero,[IntPtr]::Zero)|Out-Null
 $hidden=Wait-Until { if((Get-WindowHandle)-eq [IntPtr]::Zero){$true}else{$null}} 10000
 Assert ((Get-SaeedProcess).Count -eq 1) "close-does-not-exit" "native WM_CLOSE kept the tray process alive"
+$webviewGone=Wait-Until {
+  $alive=@($webviewPids | Where-Object { Get-Process -Id $_ -ErrorAction SilentlyContinue })
+  if($alive.Count -eq 0){$true}else{$null}
+} 10000
+Assert $webviewGone "webview2-processes-after-hide" "WebView descendant processes disappeared after character destruction"
 Start-Sleep -Seconds 2
 
 
