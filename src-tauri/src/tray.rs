@@ -13,7 +13,10 @@ use crate::{
 };
 
 fn state_snapshot(app: &AppHandle) -> (bool, CharacterScale, bool, bool) {
-    let visible = app.get_webview_window("character").is_some();
+    let visible = app
+        .get_webview_window("character")
+        .and_then(|window| window.is_visible().ok())
+        .unwrap_or(false);
     if let Some(state) = app.try_state::<AppState>() {
         if let Ok(settings) = state.settings.lock() {
             return (
@@ -128,7 +131,11 @@ pub fn install(app: &AppHandle) -> tauri::Result<()> {
                         x, y, w, h
                     ));
                 }
-                if app.get_webview_window("character").is_some() {
+                let visible = app
+                    .get_webview_window("character")
+                    .and_then(|window| window.is_visible().ok())
+                    .unwrap_or(false);
+                if visible {
                     let _ = app::hide_character_core(app.clone());
                 } else {
                     let _ = app::show_character_core(app);
@@ -138,21 +145,27 @@ pub fn install(app: &AppHandle) -> tauri::Result<()> {
         })
         .build(app)?;
 
-    // Shell_NotifyIconGetRect is available immediately after registration on
-    // Windows. Record it at startup so native smoke tests can locate the real
-    // tray icon without depending on a hover/click event.
-    if let Some(tray) = app.tray_by_id("default") {
-        if let Ok(Some(rect)) = tray.rect() {
-            let (x, y) = position_xy(rect.position);
-            let (w, h) = size_wh(rect.size);
-            if let Some(state) = app.try_state::<AppState>() {
-                state.logger.info(&format!(
-                    "Tray icon rect: x={} y={} width={} height={}",
-                    x, y, w, h
-                ));
+    // Windows may need a short interval to register the tray icon with the
+    // shell. Retry instead of assuming rect() is populated immediately.
+    let app_for_rect = app.clone();
+    thread::spawn(move || {
+        for _ in 0..20 {
+            if let Some(tray) = app_for_rect.tray_by_id("default") {
+                if let Ok(Some(rect)) = tray.rect() {
+                    let (x, y) = position_xy(rect.position);
+                    let (w, h) = size_wh(rect.size);
+                    if let Some(state) = app_for_rect.try_state::<AppState>() {
+                        state.logger.info(&format!(
+                            "Tray icon rect: x={} y={} width={} height={}",
+                            x, y, w, h
+                        ));
+                    }
+                    break;
+                }
             }
+            thread::sleep(std::time::Duration::from_millis(250));
         }
-    }
+    });
 
     Ok(())
 }
