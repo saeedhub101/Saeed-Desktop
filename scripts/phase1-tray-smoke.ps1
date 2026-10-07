@@ -229,6 +229,9 @@ else {
   Record-MenuFailures "tray icon geometry was unavailable; native mouse click could not be executed"
 }
 }
+else {
+  Record-MenuFailures "tray icon geometry was unavailable; native mouse click could not be executed"
+}
 
 Get-SaeedProcess | Stop-Process -Force -ErrorAction SilentlyContinue
 Wait-Until { if((Get-SaeedProcess).Count -eq 0){$true}else{$null}} 10000 | Out-Null
