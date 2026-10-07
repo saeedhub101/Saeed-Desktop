@@ -233,7 +233,7 @@ fn set_visible(app: &AppHandle, visible: bool) {
 }
 
 fn clamp_position(
-    work_area: tauri::Rect,
+    work_area: tauri::PhysicalRect<i32, u32>,
     window_size: tauri::PhysicalSize<u32>,
     x: i32,
     y: i32,
