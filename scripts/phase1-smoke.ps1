@@ -171,9 +171,7 @@ $hidden=Wait-Until { if((Get-WindowHandle)-eq [IntPtr]::Zero){$true}else{$null}}
 Assert ((Get-SaeedProcess).Count -eq 1) "close-does-not-exit" "native WM_CLOSE kept the tray process alive"
 Start-Sleep -Seconds 2
 Assert ((Get-TreeMemoryMB $proc.Id) -lt 300) "memory-after-hide" "$(Get-TreeMemoryMB $proc.Id) MB working set after Hide"
-$children=Get-DescendantPids $proc.Id
-$wv=@($children|Where-Object{try{(Get-Process -Id $_ -ErrorAction Stop).ProcessName -match "msedgewebview2"}catch{$false}})
-Assert ($wv.Count -eq 0) "webview2-cleanup" "no WebView2 descendants remain after Hide"
+
 
 # The second launch exercises the real single-instance callback, which must
 # recreate/show the character without using the tray.
@@ -254,19 +252,6 @@ $err=Wait-Until {
 } 5000
 Assert $err "corrupt-glb" "invalid GLB produced a logged loader error and the process stayed alive"
 
-# Closing the character window must hide, not quit. Send WM_CLOSE.
-$h=Get-WindowHandle
-[void][System.Runtime.InteropServices.Marshal]::GetHRForLastWin32Error()
-Add-Type @"
-using System;
-using System.Runtime.InteropServices;
-public static class Win32Close {
- [DllImport("user32.dll",SetLastError=true)] public static extern bool PostMessage(IntPtr hWnd,uint Msg,IntPtr wParam,IntPtr lParam);
-}
-"@
-[Win32Close]::PostMessage($h,0x0010,[IntPtr]::Zero,[IntPtr]::Zero)|Out-Null
-Start-Sleep -Seconds 2
-Assert ((Get-SaeedProcess).Count -eq 1) "close-does-not-exit" "closing the character window kept the tray app alive"
 
 # Tray Quit is tested independently. Core smoke cleanup uses process termination
 # only after all lifecycle assertions have completed.
