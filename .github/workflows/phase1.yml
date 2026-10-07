@@ -106,7 +106,9 @@ jobs:
           $evidence = Join-Path $env:RUNNER_TEMP "phase1-evidence"
           New-Item -ItemType Directory -Force -Path $evidence | Out-Null
           $results = Join-Path $env:RUNNER_TEMP "phase1-results.json"
+          $trayResults = Join-Path $env:RUNNER_TEMP "phase1-tray-results.json"
           if (Test-Path $results) { Copy-Item $results $evidence -Force }
+          if (Test-Path $trayResults) { Copy-Item $trayResults $evidence -Force }
           if (Test-Path "$env:RUNNER_TEMP\installer.txt") { Copy-Item "$env:RUNNER_TEMP\installer.txt" $evidence -Force }
           $logs = "$env:APPDATA\Saeed\logs"
           if (Test-Path $logs) { Copy-Item "$logs\*.log" $evidence -Force -ErrorAction SilentlyContinue }
