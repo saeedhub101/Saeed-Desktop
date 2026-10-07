@@ -14,6 +14,23 @@ function Wait-Until([scriptblock]$Condition,[int]$TimeoutMs=15000){
   return $null
 }
 function Get-SaeedProcess { @(Get-Process -Name "Saeed" -ErrorAction SilentlyContinue | Where-Object {$_.Path -and $_.Path -eq (Join-Path $InstallDir "Saeed.exe")}) }
+function Get-DescendantPids([int]$RootPid) {
+  $all=@{}
+  try {
+    Get-CimInstance Win32_Process -ErrorAction Stop | ForEach-Object { $all[[int]$_.ProcessId]=[int]$_.ParentProcessId }
+  } catch { return @() }
+  $result=@(); $queue=@($RootPid)
+  while($queue.Count -gt 0){
+    $parent=$queue[0]
+    if($queue.Count -gt 1){$queue=@($queue[1..($queue.Count-1)])}else{$queue=@()}
+    foreach($entry in $all.GetEnumerator()){
+      if($entry.Value -eq $parent -and $entry.Key -ne $RootPid -and $result -notcontains $entry.Key){
+        $result += [int]$entry.Key; $queue += [int]$entry.Key
+      }
+    }
+  }
+  return @($result)
+}
 Add-Type @"
 using System;
 using System.Runtime.InteropServices;
@@ -107,9 +124,17 @@ if($line){
     Assert ($w -gt 0 -and $hh -gt 0) "tray-geometry-valid" "tray icon has a real screen rectangle"
     $tx=$x+[int]($w/2);$ty=$y+[int]($hh/2)
 
+    $rootPid=(Get-SaeedProcess|Select-Object -First 1).Id
+    $webviewPids=@(Get-DescendantPids $rootPid)
+    Assert ($webviewPids.Count -gt 0) "webview2-processes-before-hide" "character window has descendant WebView processes"
     ClickPoint $tx $ty $false
     $hidden=Wait-Until { if(-not [TraySmokeWin32]::IsWindowVisible((Get-WindowHandle))){$true}else{$null}} 10000
     Assert $hidden "tray-left-click-hide" "native mouse click on the real tray rectangle hid/destroyed the character"
+    $webviewGone=Wait-Until {
+      $alive=@($webviewPids | Where-Object { Get-Process -Id $_ -ErrorAction SilentlyContinue })
+      if($alive.Count -eq 0){$true}else{$null}
+    } 10000
+    Assert $webviewGone "webview2-processes-after-hide" "WebView descendant processes disappeared after Tray Hide"
 
     ClickPoint $tx $ty $false
     $shown=Wait-Until { $z=Get-WindowHandle;if($z -ne [IntPtr]::Zero){$z}else{$null}} 10000
