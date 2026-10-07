@@ -52,9 +52,6 @@ function ClickPoint([int]$x,[int]$y,[bool]$right=$false){
     [TraySmokeWin32]::mouse_event([TraySmokeWin32]::LEFTDOWN,0,0,0,[UIntPtr]::Zero)
     [TraySmokeWin32]::mouse_event([TraySmokeWin32]::LEFTUP,0,0,0,[UIntPtr]::Zero)
   }
-else {
-  Record-MenuFailures "tray icon geometry was unavailable; native mouse click could not be executed"
-}
 }
 function Get-MenuPopup {
   $h=[TraySmokeWin32]::FindWindow("#32768",$null)
@@ -228,6 +225,9 @@ Assert (InvokeMenuClick 7) "tray-quit-command" "real mouse click selected Quit"
     Assert $exited "tray-quit" "Quit removed the Saeed process"
     Assert ((Get-SaeedProcess).Count -eq 0) "tray-process-lifetime" "Quit terminated the application"
   }
+else {
+  Record-MenuFailures "tray icon geometry was unavailable; native mouse click could not be executed"
+}
 }
 
 Get-SaeedProcess | Stop-Process -Force -ErrorAction SilentlyContinue
