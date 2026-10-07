@@ -123,7 +123,7 @@ public static class TraySmokeKeys {
     # Invoke menu commands by real mouse clicks on the native popup menu.
     # This is intentionally not keyboard navigation: Phase 1 acceptance requires
     # clicking the tray icon and clicking the actual menu/submenu item.
-    function ClickMenuItem([IntPtr]$popup,[int]$index){
+function ClickMenuItem([IntPtr]$popup,[int]$index){
       $menu=[TraySmokeWin32]::GetMenu($popup)
       if($menu -eq [IntPtr]::Zero){return $false}
       $rr=New-Object TraySmokeWin32+RECT
@@ -137,11 +137,21 @@ public static class TraySmokeKeys {
       ClickPoint $tx $ty $true
       return (Wait-Until { $p=Get-MenuPopup; if($p -ne [IntPtr]::Zero){$p}else{$null}} 3000)
     }
+    function HoverMenuItem([IntPtr]$popup,[int]$index){
+      $menu=[TraySmokeWin32]::GetMenu($popup)
+      if($menu -eq [IntPtr]::Zero){return $false}
+      $rr=New-Object TraySmokeWin32+RECT
+      if(![TraySmokeWin32]::GetMenuItemRect($popup,$menu,[uint32]$index,[ref]$rr)){return $false}
+      $cx=[int](($rr.Left+$rr.Right)/2); $cy=[int](($rr.Top+$rr.Bottom)/2)
+      [TraySmokeWin32]::SetCursorPos($cx,$cy)|Out-Null
+      Start-Sleep -Milliseconds 500
+      return $true
+    }
     function InvokeMenuClick([int]$topIndex,[int]$submenuIndex=-1){
       $p=OpenMenuNative
       if($p -eq $null){return $false}
-      if(-not (ClickMenuItem $p $topIndex)){return $false}
       if($submenuIndex -ge 0){
+        if(-not (HoverMenuItem $p $topIndex)){return $false}
         $sub=Wait-Until {
           $fg=[TraySmokeWin32]::GetForegroundWindow()
           if($fg -ne [IntPtr]::Zero){
@@ -152,9 +162,9 @@ public static class TraySmokeKeys {
           $null
         } 3000
         if($sub -eq $null){return $false}
-        if(-not (ClickMenuItem $sub $submenuIndex)){return $false}
+        return (ClickMenuItem $sub $submenuIndex)
       }
-      return $true
+      return (ClickMenuItem $p $topIndex)
     }
 
     # Show/Hide: click the enabled item itself. The disabled counterpart is not clicked.
@@ -197,10 +207,10 @@ public static class TraySmokeKeys {
     Start-Sleep -Milliseconds 500
     $dialog=[TraySmokeWin32]::FindWindow("#32770",$null)
     Assert ($dialog -ne [IntPtr]::Zero) "tray-change-character-dialog" "Change Character opened the native file dialog"
-    if($dialog -ne [IntPtr]::Zero){ SendKey 0x1B }
+if($dialog -ne [IntPtr]::Zero){ [TraySmokeKeys]::keybd_event(0x1B,0,0,[UIntPtr]::Zero); [TraySmokeKeys]::keybd_event(0x1B,0,[TraySmokeKeys]::KEYUP,[UIntPtr]::Zero) }
 
     # Quit is final and must terminate the application.
-    Assert (InvokeTopMenu 6) "tray-quit-command" "native menu selected Quit"
+Assert (InvokeMenuClick 7) "tray-quit-command" "real mouse click selected Quit"
     $exited=Wait-Until { if((Get-SaeedProcess).Count -eq 0){$true}else{$null}} 10000
     Assert $exited "tray-quit" "Quit removed the Saeed process"
     Assert ((Get-SaeedProcess).Count -eq 0) "tray-process-lifetime" "Quit terminated the application"
