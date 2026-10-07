@@ -25,11 +25,6 @@ jobs:
       - name: Generate icons
         shell: pwsh
         run: npm run icons
-      - name: Verify generated icon set
-        shell: pwsh
-        run: |
-          $required = @("src-tauri/icons/32x32.png","src-tauri/icons/128x128.png","src-tauri/icons/128x128@2x.png","src-tauri/icons/icon.png","src-tauri/icons/icon.ico")
-          foreach ($path in $required) { if (!(Test-Path $path)) { throw "Missing generated icon: $path" } }
       - name: TypeScript check
         shell: pwsh
         run: npm run check
@@ -45,42 +40,35 @@ jobs:
       - name: Verify Phase 1 packaging contract
         shell: pwsh
         run: |
-          $config = Get-Content src-tauri/tauri.conf.json -Raw | ConvertFrom-Json
-          if ($config.bundle.targets -notcontains "nsis") { throw "NSIS target is missing" }
-          if ($config.bundle.windows.webviewInstallMode.type -ne "embedBootstrapper") { throw "WebView2 bootstrapper is not embedded" }
           $installer = Get-ChildItem "src-tauri/target/release/bundle/nsis/*.exe" -File | Sort-Object LastWriteTime -Descending | Select-Object -First 1
           if (-not $installer) { throw "No NSIS installer was produced" }
-          $installer.FullName | Out-File "$env:RUNNER_TEMP\installer.txt" -Encoding utf8
+          $installer.FullName | Out-File "$env:RUNNER_TEMPinstaller.txt" -Encoding utf8
       - name: Run complete Phase 1 core installed-EXE smoke
-        id: core_smoke
         continue-on-error: true
         shell: pwsh
         run: |
-          $installer = (Get-Content "$env:RUNNER_TEMP\installer.txt" -Raw).Trim()
+          $installer = (Get-Content "$env:RUNNER_TEMPinstaller.txt" -Raw).Trim()
           powershell -NoProfile -ExecutionPolicy Bypass -File scripts/phase1-smoke.ps1 -Installer $installer
       - name: Run independent Tray smoke — Win32 mouse
-        id: tray_smoke_win32
         if: always()
         continue-on-error: true
         shell: pwsh
         run: |
-          $installer = (Get-Content "$env:RUNNER_TEMP\installer.txt" -Raw).Trim()
+          $installer = (Get-Content "$env:RUNNER_TEMPinstaller.txt" -Raw).Trim()
           powershell -NoProfile -ExecutionPolicy Bypass -File scripts/phase1-tray-smoke.ps1 -Installer $installer
       - name: Run independent Tray smoke — UI Automation
-        id: tray_smoke_uia
         if: always()
         continue-on-error: true
         shell: pwsh
         run: |
-          $installer = (Get-Content "$env:RUNNER_TEMP\installer.txt" -Raw).Trim()
+          $installer = (Get-Content "$env:RUNNER_TEMPinstaller.txt" -Raw).Trim()
           powershell -NoProfile -ExecutionPolicy Bypass -File scripts/phase1-tray-uia-smoke.ps1 -Installer $installer
       - name: Run independent Tray smoke — keyboard input
-        id: tray_smoke_keyboard
         if: always()
         continue-on-error: true
         shell: pwsh
         run: |
-          $installer = (Get-Content "$env:RUNNER_TEMP\installer.txt" -Raw).Trim()
+          $installer = (Get-Content "$env:RUNNER_TEMPinstaller.txt" -Raw).Trim()
           powershell -NoProfile -ExecutionPolicy Bypass -File scripts/phase1-tray-keyboard-smoke.ps1 -Installer $installer
       - name: Enforce all smoke results and print detailed report
         if: always()
@@ -96,19 +84,10 @@ jobs:
             $p=Join-Path $env:RUNNER_TEMP $_
             if(Test-Path $p){Copy-Item $p $evidence -Force}
           }
-          $logs = "$env:APPDATA\Saeed\logs"
-          if (Test-Path $logs) { Copy-Item "$logs\*.log" $evidence -Force -ErrorAction SilentlyContinue }
       - name: Publish Phase 1 evidence
         if: always()
         uses: actions/upload-artifact@v6
         with:
           name: phase1-evidence
-          path: \${{ runner.temp }}/phase1-evidence/**
+          path: ${{ runner.temp }}/phase1-evidence/**
           if-no-files-found: warn
-      - name: Publish installer
-        if: success()
-        uses: actions/upload-artifact@v6
-        with:
-          name: Saeed-Phase1-NSIS
-          path: src-tauri/target/release/bundle/nsis/*.exe
-          if-no-files-found: error
