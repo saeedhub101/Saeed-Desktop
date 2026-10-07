@@ -52,6 +52,9 @@ function ClickPoint([int]$x,[int]$y,[bool]$right=$false){
     [TraySmokeWin32]::mouse_event([TraySmokeWin32]::LEFTDOWN,0,0,0,[UIntPtr]::Zero)
     [TraySmokeWin32]::mouse_event([TraySmokeWin32]::LEFTUP,0,0,0,[UIntPtr]::Zero)
   }
+else {
+  Record-MenuFailures "tray icon geometry was unavailable; native mouse click could not be executed"
+}
 }
 function Get-MenuPopup {
   $h=[TraySmokeWin32]::FindWindow("#32768",$null)
@@ -62,32 +65,7 @@ function Get-MenuPopup {
     [TraySmokeWin32]::GetClassName($fg,$name,$name.Capacity)|Out-Null
     if($name.ToString() -eq "#32768"){return $fg}
   }
-  return [IntPtr]::Zero
-  else {
-    # No tray rectangle: record every dependent check rather than silently skipping them.
-    Fail "tray-menu-hide-command" "tray icon geometry was unavailable; native mouse click could not be executed"
-    Fail "tray-menu-hide-applied" "tray icon geometry was unavailable; native mouse click could not be executed"
-    Fail "tray-menu-show-command" "tray icon geometry was unavailable; native mouse click could not be executed"
-    Fail "tray-menu-show-applied" "tray icon geometry was unavailable; native mouse click could not be executed"
-    Fail "tray-size-small-command" "tray icon geometry was unavailable; native mouse click could not be executed"
-    Fail "tray-size-small-applied" "tray icon geometry was unavailable; native mouse click could not be executed"
-    Fail "tray-size-medium-command" "tray icon geometry was unavailable; native mouse click could not be executed"
-    Fail "tray-size-medium-applied" "tray icon geometry was unavailable; native mouse click could not be executed"
-    Fail "tray-size-large-command" "tray icon geometry was unavailable; native mouse click could not be executed"
-    Fail "tray-size-large-applied" "tray icon geometry was unavailable; native mouse click could not be executed"
-    Fail "tray-always-on-top-toggle-1" "tray icon geometry was unavailable; native mouse click could not be executed"
-    Fail "tray-always-on-top-toggle-2" "tray icon geometry was unavailable; native mouse click could not be executed"
-    Fail "tray-low-power-toggle-1" "tray icon geometry was unavailable; native mouse click could not be executed"
-    Fail "tray-low-power-toggle-2" "tray icon geometry was unavailable; native mouse click could not be executed"
-    Fail "tray-rotate-once-command" "tray icon geometry was unavailable; native mouse click could not be executed"
-    Fail "tray-rotate-once-stable" "tray icon geometry was unavailable; native mouse click could not be executed"
-    Fail "tray-change-character-command" "tray icon geometry was unavailable; native mouse click could not be executed"
-    Fail "tray-change-character-dialog" "tray icon geometry was unavailable; native mouse click could not be executed"
-    Fail "tray-quit-command" "tray icon geometry was unavailable; native mouse click could not be executed"
-    Fail "tray-quit" "tray icon geometry was unavailable; native mouse click could not be executed"
-    Fail "tray-process-lifetime" "tray icon geometry was unavailable; native mouse click could not be executed"
-  }
-}
+  return [IntPtr]::Zero}
 
 Get-SaeedProcess | Stop-Process -Force -ErrorAction SilentlyContinue
 Wait-Until { if((Get-SaeedProcess).Count -eq 0){$true}else{$null}} 10000 | Out-Null
@@ -111,6 +89,17 @@ $line=Wait-Until {
   }
 } 10000
 Assert ($null -ne $line) "tray-native-geometry" "native Tauri tray rect was reported without UI Automation"
+function Record-MenuFailures([string]$reason){
+  $names=@(
+    "tray-menu-hide-command","tray-menu-hide-applied","tray-menu-show-command","tray-menu-show-applied",
+    "tray-size-small-command","tray-size-small-applied","tray-size-medium-command","tray-size-medium-applied",
+    "tray-size-large-command","tray-size-large-applied","tray-always-on-top-toggle-1","tray-always-on-top-toggle-2",
+    "tray-low-power-toggle-1","tray-low-power-toggle-2","tray-rotate-once-command","tray-rotate-once-stable",
+    "tray-change-character-command","tray-change-character-dialog","tray-quit-command","tray-quit","tray-process-lifetime"
+  )
+  foreach($n in $names){ Fail $n $reason }
+}
+
 if($line){
   if($line -match "x=(-?\d+) y=(-?\d+) width=(\d+) height=(\d+)"){
     $x=[int]$Matches[1];$y=[int]$Matches[2];$w=[int]$Matches[3];$hh=[int]$Matches[4]
