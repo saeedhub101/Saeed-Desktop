@@ -138,6 +138,22 @@ pub fn install(app: &AppHandle) -> tauri::Result<()> {
         })
         .build(app)?;
 
+    // Shell_NotifyIconGetRect is available immediately after registration on
+    // Windows. Record it at startup so native smoke tests can locate the real
+    // tray icon without depending on a hover/click event.
+    if let Some(tray) = app.tray_by_id("default") {
+        if let Ok(Some(rect)) = tray.rect() {
+            let (x, y) = position_xy(rect.position);
+            let (w, h) = size_wh(rect.size);
+            if let Some(state) = app.try_state::<AppState>() {
+                state.logger.info(&format!(
+                    "Tray icon rect: x={} y={} width={} height={}",
+                    x, y, w, h
+                ));
+            }
+        }
+    }
+
     Ok(())
 }
 
