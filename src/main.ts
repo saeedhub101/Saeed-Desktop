@@ -133,7 +133,7 @@ async function load() {
     fitModel();
   } catch (error) {
     setStatus("Unable to load this GLB.");
-    await invoke("log_error", { message: String(error) }).catch(() => {});
+    await invoke("log_error", { message: `GLB load failed: ${String(error)}` }).catch(() => {});
     requestRender();
   }
 }
@@ -153,8 +153,8 @@ window.addEventListener("resize", () => {
   fitModel();
 });
 
-window.addEventListener("pointerdown", async () => {
-  if (!model) return;
+window.addEventListener("pointerdown", async (event) => {
+  if (!model || event.button !== 0) return;
   await windowHandle.startDragging().catch(() => {});
 });
 
