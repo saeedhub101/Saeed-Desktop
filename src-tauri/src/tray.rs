@@ -164,20 +164,20 @@ pub fn install(app: &AppHandle) -> tauri::Result<()> {
             }
         })
         .on_tray_icon_event(|tray, event| {
+            let app = tray.app_handle();
+
             if let TrayIconEvent::Click {
-                button: MouseButton::Left,
+                button,
                 button_state: MouseButtonState::Up,
                 rect,
                 ..
             } = event
             {
-                let app = tray.app_handle();
                 if let Some(state) = app.try_state::<AppState>() {
-                    let button_name = match event {
-                        TrayIconEvent::Click { button: MouseButton::Left, .. } => "left",
-                        TrayIconEvent::Click { button: MouseButton::Right, .. } => "right",
-                        TrayIconEvent::Click { button: MouseButton::Middle, .. } => "middle",
-                        _ => "other",
+                    let button_name = match button {
+                        MouseButton::Left => "left",
+                        MouseButton::Right => "right",
+                        MouseButton::Middle => "middle",
                     };
                     state.logger.info(&format!("Tray click event: button={}", button_name));
                     let (x, y) = position_xy(rect.position);
@@ -187,40 +187,40 @@ pub fn install(app: &AppHandle) -> tauri::Result<()> {
                         x, y, w, h
                     ));
                 }
-                if matches!(event, TrayIconEvent::Click {
-                    button: MouseButton::Right,
-                    button_state: MouseButtonState::Up,
-                    ..
-                }) {
-                    if let Some(tray_icon) = app.tray_by_id(TRAY_ID) {
-                        match tray_icon.with_inner_tray_icon(|inner| inner.show_menu()) {
-                            Ok(Ok(())) => {
-                                if let Some(state) = app.try_state::<AppState>() {
-                                    state.logger.info("Tray context menu explicitly shown");
+
+                match button {
+                    MouseButton::Right => {
+                        if let Some(tray_icon) = app.tray_by_id(TRAY_ID) {
+                            match tray_icon.with_inner_tray_icon(|inner| inner.show_menu()) {
+                                Ok(Ok(())) => {
+                                    if let Some(state) = app.try_state::<AppState>() {
+                                        state.logger.info("Tray context menu explicitly shown");
+                                    }
                                 }
-                            }
-                            Ok(Err(err)) => {
-                                if let Some(state) = app.try_state::<AppState>() {
-                                    state.logger.error(&format!("Tray context menu show failed: {}", err));
+                                Ok(Err(err)) => {
+                                    if let Some(state) = app.try_state::<AppState>() {
+                                        state.logger.error(&format!("Tray context menu show failed: {}", err));
+                                    }
                                 }
-                            }
-                            Err(err) => {
-                                if let Some(state) = app.try_state::<AppState>() {
-                                    state.logger.error(&format!("Tray inner icon access failed: {}", err));
+                                Err(err) => {
+                                    if let Some(state) = app.try_state::<AppState>() {
+                                        state.logger.error(&format!("Tray inner icon access failed: {}", err));
+                                    }
                                 }
                             }
                         }
                     }
-                    return;
+                    MouseButton::Left => {
+                        let visible = character_is_visible(app);
+                        if visible {
+                            let _ = app::hide_character_core(app.clone());
+                        } else {
+                            let _ = app::show_character_core(app.clone());
+                        }
+                        refresh(app);
+                    }
+                    MouseButton::Middle => {}
                 }
-
-                let visible = character_is_visible(app);
-                if visible {
-                    let _ = app::hide_character_core(app.clone());
-                } else {
-                    let _ = app::show_character_core(app);
-                }
-                refresh(app);
             }
         })
         .build(app)?;
