@@ -28,6 +28,7 @@ pub struct AppState {
     pub show_after_destroy: AtomicBool,
     pub cleanup_ack: Mutex<Option<mpsc::Sender<()>>>,
     pub probe_generation: AtomicU64,
+    pub interaction_active: AtomicBool,
 }
 
 pub(crate) fn data_dir(app: &AppHandle) -> Result<PathBuf, String> {
@@ -64,6 +65,7 @@ pub fn run() {
                 show_after_destroy: AtomicBool::new(false),
                 cleanup_ack: Mutex::new(None),
                 probe_generation: AtomicU64::new(0),
+                interaction_active: AtomicBool::new(false),
             });
 
             app.state::<AppState>().logger.info("Core startup");
@@ -90,6 +92,7 @@ pub fn run() {
             debug_rotate_once,
             character_cleanup_done,
             log_error,
+            set_character_interaction,
         ])
         .on_window_event(|window, event| {
             let app = window.app_handle();
@@ -469,6 +472,12 @@ fn character_cleanup_done(state: State<'_, AppState>) {
             let _ = sender.send(());
         }
     }
+}
+
+#[tauri::command]
+fn set_character_interaction(state: State<'_, AppState>, active: bool) {
+    state.interaction_active.store(active, Ordering::SeqCst);
+    state.logger.info(&format!("Character interaction active={}", active));
 }
 
 #[tauri::command]
