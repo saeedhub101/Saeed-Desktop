@@ -204,26 +204,48 @@ window.addEventListener("resize", () => {
   fitModel();
 });
 
-window.addEventListener("pointerdown", async (event) => {
-  if (!model || event.button !== 0) return;
+async function endDrag(pointerId?: number) {
+  if (!dragging) return;
+  dragging = false;
+  pendingAlphaProbe = null;
+  if (pointerId !== undefined && canvas.hasPointerCapture(pointerId)) {
+    try { canvas.releasePointerCapture(pointerId); } catch {}
+  }
+  await invoke("set_character_interaction", { active: false }).catch(() => {});
+  if (clickThrough) await windowHandle.setIgnoreCursorEvents(true).catch(() => {});
+}
+
+window.addEventListener("pointerdown", (event) => {
+  if (!model || event.button !== 0 || dragging) return;
+
+  // The alpha probe has already made the character pixels interactive.
+  // Do not wait for another async hit-test here: the native drag must start
+  // from the original mouse-down event.
   dragging = true;
-  await invoke("set_character_interaction", { active: true }).catch(() => {});
-  await windowHandle.setIgnoreCursorEvents(false).catch(() => {});
-  await windowHandle.startDragging().catch(() => {});
+  pendingAlphaProbe = null;
+  void invoke("set_character_interaction", { active: true }).catch(() => {});
+
+  try { canvas.setPointerCapture(event.pointerId); } catch {}
+
+  void windowHandle.setIgnoreCursorEvents(false).catch(() => {});
+  void windowHandle.startDragging().catch(async (error) => {
+    dragging = false;
+    await invoke("set_character_interaction", { active: false }).catch(() => {});
+    if (clickThrough) await windowHandle.setIgnoreCursorEvents(true).catch(() => {});
+    await invoke("log_error", { message: `Character drag failed: ${String(error)}` }).catch(() => {});
+  });
 });
 
-window.addEventListener("pointerup", async () => {
-  if (!dragging) return;
-  dragging = false;
-  await invoke("set_character_interaction", { active: false }).catch(() => {});
-  if (clickThrough) await windowHandle.setIgnoreCursorEvents(true).catch(() => {});
+window.addEventListener("pointerup", (event) => {
+  void endDrag(event.pointerId);
 });
 
-window.addEventListener("blur", async () => {
-  if (!dragging) return;
-  dragging = false;
-  await invoke("set_character_interaction", { active: false }).catch(() => {});
-  if (clickThrough) await windowHandle.setIgnoreCursorEvents(true).catch(() => {});
+window.addEventListener("pointercancel", (event) => {
+  void endDrag(event.pointerId);
+});
+
+window.addEventListener("blur", () => {
+  void endDrag();
 });
 
 windowHandle.listen("cursor-probe", async (event) => {
