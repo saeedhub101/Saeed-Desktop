@@ -192,19 +192,14 @@ pub fn install(app: &AppHandle) -> tauri::Result<()> {
                     MouseButton::Right => {
                         if let Some(tray_icon) = app.tray_by_id(TRAY_ID) {
                             match tray_icon.with_inner_tray_icon(|inner| inner.show_menu()) {
-                                Ok(Ok(())) => {
+                                Ok(()) => {
                                     if let Some(state) = app.try_state::<AppState>() {
                                         state.logger.info("Tray context menu explicitly shown");
                                     }
                                 }
-                                Ok(Err(err)) => {
-                                    if let Some(state) = app.try_state::<AppState>() {
-                                        state.logger.error(&format!("Tray context menu show failed: {}", err));
-                                    }
-                                }
                                 Err(err) => {
                                     if let Some(state) = app.try_state::<AppState>() {
-                                        state.logger.error(&format!("Tray inner icon access failed: {}", err));
+                                        state.logger.error(&format!("Tray context menu show failed: {}", err));
                                     }
                                 }
                             }
@@ -215,7 +210,7 @@ pub fn install(app: &AppHandle) -> tauri::Result<()> {
                         if visible {
                             let _ = app::hide_character_core(app.clone());
                         } else {
-                            let _ = app::show_character_core(app.clone());
+                            let _ = app::show_character_core(&app);
                         }
                         refresh(app);
                     }
