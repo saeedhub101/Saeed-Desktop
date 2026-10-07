@@ -12,11 +12,19 @@ use crate::{
     settings::CharacterScale,
 };
 
-fn state_snapshot(app: &AppHandle) -> (bool, CharacterScale, bool, bool) {
-    let visible = app
-        .get_webview_window("character")
+fn character_is_visible(app: &AppHandle) -> bool {
+    if let Some(state) = app.try_state::<AppState>() {
+        if state.character_destroying.load(std::sync::atomic::Ordering::SeqCst) {
+            return false;
+        }
+    }
+    app.get_webview_window("character")
         .and_then(|window| window.is_visible().ok())
-        .unwrap_or(false);
+        .unwrap_or(false)
+}
+
+fn state_snapshot(app: &AppHandle) -> (bool, CharacterScale, bool, bool) {
+    let visible = character_is_visible(app);
     if let Some(state) = app.try_state::<AppState>() {
         if let Ok(settings) = state.settings.lock() {
             return (
@@ -131,10 +139,7 @@ pub fn install(app: &AppHandle) -> tauri::Result<()> {
                         x, y, w, h
                     ));
                 }
-                let visible = app
-                    .get_webview_window("character")
-                    .and_then(|window| window.is_visible().ok())
-                    .unwrap_or(false);
+                let visible = character_is_visible(app);
                 if visible {
                     let _ = app::hide_character_core(app.clone());
                 } else {
