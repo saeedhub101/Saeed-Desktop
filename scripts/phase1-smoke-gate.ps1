@@ -28,7 +28,7 @@ $lines=@("SAEED PHASE 1 TEST REPORT","=========================","Generated: $(G
 foreach($group in $report.Keys){
   $r=$report[$group]
   if($r -is [System.Collections.IDictionary]){ $lines += ("{0}: TOTAL={1} PASS={2} FAIL={3}" -f $group,$r.TOTAL,$r.PASS,$r.FAIL) }
-  else { $lines += "$group: $r" }
+  else { $lines += "${group}: $r" }
 }
 $lines += ""; $lines += "FAILURES"; $lines += "--------"
 if($failed.Count){$lines += $failed}else{$lines += "None"}
