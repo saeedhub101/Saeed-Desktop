@@ -9,6 +9,7 @@ type Settings = {
     scale: "small" | "medium" | "large";
     currentId: string;
     alwaysOnTop: boolean;
+    clickThrough: boolean;
   };
   performance: { lowPower: boolean };
 };
@@ -24,6 +25,8 @@ let model: THREE.Object3D | null = null;
 let renderFrame = 0;
 let rotating = false;
 let disposed = false;
+let dragging = false;
+let clickThrough = true;
 const raycaster = new THREE.Raycaster();
 const pointer = new THREE.Vector2();
 
@@ -102,6 +105,7 @@ async function load() {
   disposed = false;
   try {
     const settings = await invoke<Settings>("get_settings");
+    clickThrough = settings.character.clickThrough;
     renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true, powerPreference: settings.performance.lowPower ? "low-power" : "high-performance" });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, settings.performance.lowPower ? 1 : 2));
   renderer.setSize(window.innerWidth, window.innerHeight, false);
@@ -118,7 +122,7 @@ async function load() {
 
   const bytes = await invoke<number[]>("get_character_model");
   if (!bytes.length) {
-    await windowHandle.setIgnoreCursorEvents(true).catch(() => {});
+    await windowHandle.setIgnoreCursorEvents(clickThrough).catch(() => {});
     setStatus("No character model. Choose Change Character from the Saeed tray menu.");
     requestRender();
     return;
@@ -160,11 +164,23 @@ window.addEventListener("resize", () => {
 
 window.addEventListener("pointerdown", async (event) => {
   if (!model || event.button !== 0) return;
+  dragging = true;
+  await windowHandle.setIgnoreCursorEvents(false).catch(() => {});
   await windowHandle.startDragging().catch(() => {});
+});
+
+window.addEventListener("pointerup", async () => {
+  if (!dragging) return;
+  dragging = false;
+  if (clickThrough) await windowHandle.setIgnoreCursorEvents(true).catch(() => {});
 });
 
 windowHandle.listen("cursor-probe", async (event) => {
   const p = event.payload as { x: number; y: number; width: number; height: number };
+  if (dragging || !clickThrough) {
+    await windowHandle.setIgnoreCursorEvents(false).catch(() => {});
+    return;
+  }
   if (!model || !camera) {
     await windowHandle.setIgnoreCursorEvents(true).catch(() => {});
     return;
@@ -174,6 +190,13 @@ windowHandle.listen("cursor-probe", async (event) => {
   raycaster.setFromCamera(pointer, camera);
   const hit = raycaster.intersectObject(model, true).length > 0;
   await windowHandle.setIgnoreCursorEvents(!hit).catch(() => {});
+});
+
+windowHandle.listen("click-through-changed", async (event) => {
+  clickThrough = Boolean(event.payload);
+  if (!clickThrough) {
+    await windowHandle.setIgnoreCursorEvents(false).catch(() => {});
+  }
 });
 
 windowHandle.listen("debug-rotate-once", () => {
