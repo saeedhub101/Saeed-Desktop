@@ -276,7 +276,9 @@ fn toggle_click_through(app: &AppHandle) {
         }
     }
     if let Some(window) = app.get_webview_window("character") {
-        if let Err(err) = window.set_ignore_cursor_events(enabled) {
+        let interaction_active = state.interaction_active.load(std::sync::atomic::Ordering::SeqCst);
+        let effective_ignore = enabled && !interaction_active;
+        if let Err(err) = window.set_ignore_cursor_events(effective_ignore) {
             state.logger.error(&format!("Tray Click-through window update failed: {}", err));
         }
         if let Err(err) = window.emit("click-through-changed", enabled) {
