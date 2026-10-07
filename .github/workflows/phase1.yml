@@ -1,8 +1,6 @@
 name: Phase 1 — Build and Full Windows Runtime Acceptance
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
 permissions:
   contents: read
 jobs:
