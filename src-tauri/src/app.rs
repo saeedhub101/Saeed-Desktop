@@ -389,7 +389,10 @@ pub(crate) fn import_character_core(
         settings.save(&data_dir(&app)?)?;
     }
 
-    if app.get_webview_window("character").is_some() {
+    let destroying = state.character_destroying.load(Ordering::SeqCst);
+    if destroying {
+        state.show_after_destroy.store(true, Ordering::SeqCst);
+    } else if app.get_webview_window("character").is_some() {
         let _ = app.emit("character-reload", ());
     } else {
         create_character_window(&app)?;
