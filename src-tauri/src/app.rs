@@ -293,7 +293,7 @@ fn get_character_model(app: AppHandle, state: State<'_, AppState>) -> Result<Res
         .current_id
         .clone();
 
-    let path = data_dir(&app)?.join("characters").join(id).join("model.glb");
+    let path = data_dir(&app)?.join("characters").join(&id).join("model.glb");
     if path.exists() {
         return Ok(Response::new(fs::read(path).map_err(|e| e.to_string())?));
     }
