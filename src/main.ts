@@ -120,8 +120,8 @@ async function load() {
   key.position.set(2, 4, 3);
   scene.add(key);
 
-  const bytes = await invoke<number[]>("get_character_model");
-  if (!bytes.length) {
+  const bytes = await invoke<ArrayBuffer>("get_character_model");
+  if (!bytes.byteLength) {
     await windowHandle.setIgnoreCursorEvents(clickThrough).catch(() => {});
     setStatus("No character model. Choose Change Character from the Saeed tray menu.");
     requestRender();
@@ -129,8 +129,7 @@ async function load() {
   }
 
   try {
-    const buffer = new Uint8Array(bytes).buffer;
-    const gltf = await new GLTFLoader().parseAsync(buffer, "");
+    const gltf = await new GLTFLoader().parseAsync(bytes, "");
     model = gltf.scene;
     scene.add(model);
     await windowHandle.setIgnoreCursorEvents(clickThrough).catch(() => {});
