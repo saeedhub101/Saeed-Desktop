@@ -25,6 +25,7 @@ pub struct AppState {
     pub settings: Mutex<AppSettings>,
     pub logger: Logger,
     pub character_destroying: AtomicBool,
+    pub show_after_destroy: AtomicBool,
     pub cleanup_ack: Mutex<Option<mpsc::Sender<()>>>,
     pub probe_generation: AtomicU64,
 }
@@ -60,6 +61,7 @@ pub fn run() {
                 settings: Mutex::new(settings.clone()),
                 logger,
                 character_destroying: AtomicBool::new(false),
+                show_after_destroy: AtomicBool::new(false),
                 cleanup_ack: Mutex::new(None),
                 probe_generation: AtomicU64::new(0),
             });
@@ -200,12 +202,22 @@ pub(crate) fn destroy_character_window(app: &AppHandle) {
         }
         let state = app_for_thread.state::<AppState>();
         state.character_destroying.store(false, Ordering::SeqCst);
+        let show_after_destroy = state.show_after_destroy.swap(false, Ordering::SeqCst);
         set_visible(&app_for_thread, false);
-        tray::refresh(&app_for_thread);
+        if show_after_destroy {
+            let _ = show_character_core(&app_for_thread);
+        } else {
+            tray::refresh(&app_for_thread);
+        }
     });
 }
 
 pub(crate) fn show_character_core(app: &AppHandle) -> Result<(), String> {
+    let state = app.state::<AppState>();
+    if state.character_destroying.load(Ordering::SeqCst) {
+        state.show_after_destroy.store(true, Ordering::SeqCst);
+        return Ok(());
+    }
     if app.get_webview_window("character").is_none() {
         create_character_window(app)?;
     } else if let Some(window) = app.get_webview_window("character") {
@@ -253,7 +265,7 @@ fn clamp_position(
 fn clamp_character_window_position(window: &tauri::Window, x: i32, y: i32) {
     let Ok(Some(monitor)) = window.current_monitor() else { return };
     let Ok(size) = window.outer_size() else { return };
-    let (x, y) = clamp_position(monitor.work_area(), size, x, y);
+    let (x, y) = clamp_position(*monitor.work_area(), size, x, y);
     if let Ok(current) = window.outer_position() {
         if current.x != x || current.y != y {
             let _ = window.set_position(tauri::PhysicalPosition::new(x, y));
@@ -275,7 +287,7 @@ fn position_character_above_tray(window: &tauri::WebviewWindow) -> Result<(), St
     let y = work_area.position.y
         + work_area.size.height.saturating_sub(size.height) as i32
         - margin;
-    let (x, y) = clamp_position(work_area, size, x, y);
+    let (x, y) = clamp_position(*work_area, size, x, y);
     window
         .set_position(tauri::PhysicalPosition::new(x, y))
         .map_err(|e| e.to_string())
@@ -325,6 +337,9 @@ pub(crate) fn set_character_scale_core(
     if let Some(window) = app.get_webview_window("character") {
         let size = character_size(scale);
         let _ = window.set_size(tauri::PhysicalSize::new(size as u32, size as u32));
+        if let Ok(position) = window.outer_position() {
+            clamp_character_window_position(&window, position.x, position.y);
+        }
         let _ = window.emit("character-refit", ());
     }
     tray::refresh(&app);
