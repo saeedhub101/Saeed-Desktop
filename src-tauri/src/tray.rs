@@ -4,7 +4,7 @@ use rfd::FileDialog;
 use tauri::{
     menu::{CheckMenuItemBuilder, MenuBuilder, MenuItemBuilder, SubmenuBuilder},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    AppHandle, Manager, Position, Size,
+    AppHandle, Emitter, Manager, Position, Size,
 };
 
 use crate::{
