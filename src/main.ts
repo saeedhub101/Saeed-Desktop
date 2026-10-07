@@ -27,6 +27,10 @@ let rotating = false;
 let disposed = false;
 let dragging = false;
 let clickThrough = true;
+let contextRecoveryAttempts = 0;
+let recoveringContext = false;
+let pendingAlphaProbe: { x: number; y: number; width: number; height: number } | null = null;
+let activeRenderCallback: ((now: number) => boolean) | null = null;
 const raycaster = new THREE.Raycaster();
 const pointer = new THREE.Vector2();
 
@@ -54,6 +58,8 @@ function disposeMaterial(material: THREE.Material) {
 }
 
 function disposeRenderer() {
+  activeRenderCallback = null;
+  pendingAlphaProbe = null;
   if (model) {
     disposeObject(model);
     scene?.remove(model);
@@ -76,12 +82,28 @@ function requestRender(active = false) {
   const tick = (now: number) => {
     renderFrame = 0;
     if (disposed || !renderer || !scene || !camera) return;
+    const keepActive = activeRenderCallback ? activeRenderCallback(now) : active && now - started < 2000;
     renderer.render(scene, camera);
-    if (active && now - started < 2000) {
-      renderFrame = requestAnimationFrame(tick);
-    }
+    if (pendingAlphaProbe) samplePendingAlphaProbe();
+    if (keepActive) renderFrame = requestAnimationFrame(tick);
+    else activeRenderCallback = null;
   };
   renderFrame = requestAnimationFrame(tick);
+}
+
+function samplePendingAlphaProbe() {
+  if (!pendingAlphaProbe || !renderer) return;
+  const sample = pendingAlphaProbe;
+  pendingAlphaProbe = null;
+  const gl = renderer.getContext();
+  if (gl.isContextLost()) return;
+  const drawing = renderer.getDrawingBufferSize(new THREE.Vector2());
+  if (!sample.width || !sample.height || drawing.x < 1 || drawing.y < 1) return;
+  const px = Math.min(drawing.x - 1, Math.max(0, Math.floor((sample.x / sample.width) * drawing.x)));
+  const py = Math.min(drawing.y - 1, Math.max(0, Math.floor(((sample.height - sample.y) / sample.height) * drawing.y)));
+  const pixel = new Uint8Array(4);
+  gl.readPixels(px, py, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, pixel);
+  void windowHandle.setIgnoreCursorEvents(pixel[3] <= 8).catch(() => {});
 }
 
 function fitModel() {
@@ -135,6 +157,7 @@ async function load() {
     await windowHandle.setIgnoreCursorEvents(clickThrough).catch(() => {});
     setStatus("");
     fitModel();
+    contextRecoveryAttempts = 0;
   } catch (error) {
     setStatus("Unable to load this GLB.");
     await invoke("log_error", { message: `GLB load failed: ${String(error)}` }).catch(() => {});
@@ -152,6 +175,26 @@ async function recreate(_lowPower: boolean) {
   disposeRenderer();
   await load();
 }
+
+canvas.addEventListener("webglcontextlost", (event) => {
+  event.preventDefault();
+  if (recoveringContext || disposed) return;
+  recoveringContext = true;
+  contextRecoveryAttempts += 1;
+  if (contextRecoveryAttempts > 1) {
+    recoveringContext = false;
+    setStatus("WebGL context was lost and could not be restored.");
+    void invoke("log_error", { message: "WebGL context lost after recovery attempt." }).catch(() => {});
+    return;
+  }
+  setStatus("Recreating the WebGL renderer...");
+  disposeRenderer();
+  window.setTimeout(() => {
+    void load().finally(() => {
+      recoveringContext = false;
+    });
+  }, 50);
+});
 
 window.addEventListener("resize", () => {
   if (!renderer || !camera) return;
@@ -189,15 +232,12 @@ windowHandle.listen("cursor-probe", async (event) => {
     await windowHandle.setIgnoreCursorEvents(false).catch(() => {});
     return;
   }
-  if (!model || !camera) {
+  if (!model || !camera || !renderer) {
     await windowHandle.setIgnoreCursorEvents(true).catch(() => {});
     return;
   }
-  pointer.x = (p.x / Math.max(1, p.width)) * 2 - 1;
-  pointer.y = -(p.y / Math.max(1, p.height)) * 2 + 1;
-  raycaster.setFromCamera(pointer, camera);
-  const hit = raycaster.intersectObject(model, true).length > 0;
-  await windowHandle.setIgnoreCursorEvents(!hit).catch(() => {});
+  pendingAlphaProbe = p;
+  requestRender();
 });
 
 windowHandle.listen("click-through-changed", async (event) => {
@@ -212,15 +252,21 @@ windowHandle.listen("debug-rotate-once", () => {
   rotating = true;
   const start = performance.now();
   const original = model.rotation.y;
-  const animate = (now: number) => {
-    if (!model || disposed) { rotating = false; return; }
+  activeRenderCallback = (now) => {
+    if (!model || disposed) {
+      rotating = false;
+      return false;
+    }
     const t = Math.min(1, (now - start) / 2000);
     model.rotation.y = original + Math.PI * 2 * (t * t * (3 - 2 * t));
-    renderer?.render(scene!, camera!);
-    if (t < 1) requestAnimationFrame(animate);
-    else { rotating = false; requestRender(); }
+    if (t >= 1) {
+      rotating = false;
+      activeRenderCallback = null;
+      return false;
+    }
+    return true;
   };
-  requestAnimationFrame(animate);
+  requestRender(true);
 });
 
 windowHandle.listen("character-reload", async () => {
