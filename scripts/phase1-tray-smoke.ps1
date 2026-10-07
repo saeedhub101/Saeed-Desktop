@@ -25,6 +25,10 @@ public static class TraySmokeWin32 {
  [DllImport("user32.dll")] public static extern void mouse_event(uint flags,uint dx,uint dy,uint data,UIntPtr extra);
  [DllImport("user32.dll",CharSet=CharSet.Unicode)] public static extern IntPtr GetForegroundWindow();
  [DllImport("user32.dll",CharSet=CharSet.Unicode)] public static extern int GetClassName(IntPtr hWnd,System.Text.StringBuilder lpClassName,int nMaxCount);
+  [DllImport("user32.dll")] public static extern int GetMenuItemCount(IntPtr hMenu);
+ [DllImport("user32.dll")] public static extern bool GetMenuItemRect(IntPtr hWnd,IntPtr hMenu,uint nPos,out RECT rect);
+ [DllImport("user32.dll")] public static extern IntPtr GetMenu(IntPtr hWnd);
+
  [StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left,Top,Right,Bottom; }
  public const uint LEFTDOWN=0x0002,LEFTUP=0x0004,RIGHTDOWN=0x0008,RIGHTUP=0x0010;
 }
@@ -116,52 +120,57 @@ public static class TraySmokeKeys {
     }
 
 
-    # Invoke menu commands using native keyboard navigation, not UI Automation.
+    # Invoke menu commands by real mouse clicks on the native popup menu.
+    # This is intentionally not keyboard navigation: Phase 1 acceptance requires
+    # clicking the tray icon and clicking the actual menu/submenu item.
+    function ClickMenuItem([IntPtr]$popup,[int]$index){
+      $menu=[TraySmokeWin32]::GetMenu($popup)
+      if($menu -eq [IntPtr]::Zero){return $false}
+      $rr=New-Object TraySmokeWin32+RECT
+      if(![TraySmokeWin32]::GetMenuItemRect($popup,$menu,[uint32]$index,[ref]$rr)){return $false}
+      $cx=[int](($rr.Left+$rr.Right)/2); $cy=[int](($rr.Top+$rr.Bottom)/2)
+      ClickPoint $cx $cy $false
+      Start-Sleep -Milliseconds 300
+      return $true
+    }
     function OpenMenuNative {
       ClickPoint $tx $ty $true
       return (Wait-Until { $p=Get-MenuPopup; if($p -ne [IntPtr]::Zero){$p}else{$null}} 3000)
     }
-    function SendKey([byte]$vk) {
-      [TraySmokeKeys]::keybd_event($vk,0,0,[UIntPtr]::Zero)
-      [TraySmokeKeys]::keybd_event($vk,0,[TraySmokeKeys]::KEYUP,[UIntPtr]::Zero)
-      Start-Sleep -Milliseconds 250
-    }
-
-    # Keyboard traversal of the native popup menu. Menu order is the order created by tray.rs.
-    # We reopen the menu for every command so each check is independent.
-    function InvokeMenuByDownCount([int]$count) {
+    function InvokeMenuClick([int]$topIndex,[int]$submenuIndex=-1){
       $p=OpenMenuNative
-      if($p -eq $null){ return $false }
-      for($i=0;$i -lt $count;$i++){ SendKey 0x28 } # VK_DOWN
-      SendKey 0x0D # VK_RETURN
+      if($p -eq $null){return $false}
+      if(-not (ClickMenuItem $p $topIndex)){return $false}
+      if($submenuIndex -ge 0){
+        $sub=Wait-Until {
+          $fg=[TraySmokeWin32]::GetForegroundWindow()
+          if($fg -ne [IntPtr]::Zero){
+            $name=New-Object System.Text.StringBuilder 64
+            [TraySmokeWin32]::GetClassName($fg,$name,$name.Capacity)|Out-Null
+            if($name.ToString() -eq "#32768" -and $fg -ne $p){$fg}
+          }
+          $null
+        } 3000
+        if($sub -eq $null){return $false}
+        if(-not (ClickMenuItem $sub $submenuIndex)){return $false}
+      }
       return $true
     }
 
-    # Native keyboard navigation; no UI Automation.
-    function InvokeTopMenu([int]$downCount,[switch]$OpenSubmenu,[int]$SubmenuDown=0) {
-      $p=OpenMenuNative
-      if($p -eq $null){ return $false }
-      SendKey 0x24 # VK_HOME selects the first enabled top-level item
-      for($i=0;$i -lt $downCount;$i++){ SendKey 0x28 }
-      if($OpenSubmenu){ SendKey 0x27; for($i=0;$i -lt $SubmenuDown;$i++){ SendKey 0x28 } }
-      SendKey 0x0D
-      return $true
-    }
-
-    # Show/Hide: exercise both directions. The enabled item is selected by HOME.
-    Assert (InvokeTopMenu 0) "tray-menu-hide-command" "native menu selected the enabled Hide command"
+    # Show/Hide: click the enabled item itself. The disabled counterpart is not clicked.
+    Assert (InvokeMenuClick 1) "tray-menu-hide-command" "real mouse click selected Hide Saeed"
     $hidden=Wait-Until { if((Get-WindowHandle)-eq [IntPtr]::Zero){$true}else{$null}} 5000
     Assert $hidden "tray-menu-hide-applied" "Hide command destroyed the character window"
 
-    Assert (InvokeTopMenu 0) "tray-menu-show-command" "native menu selected the enabled Show command"
+    Assert (InvokeMenuClick 0) "tray-menu-show-command" "real mouse click selected Show Saeed"
     $shown=Wait-Until { $z=Get-WindowHandle;if($z -ne [IntPtr]::Zero){$z}else{$null}} 5000
     Assert ($shown -ne $null) "tray-menu-show-applied" "Show command recreated the character window"
 
     # Character Size -> Small, Medium, Large
     $sizes=@{small=0;medium=1;large=2}
     foreach($size in @("small","medium","large")){
-      $ok=InvokeTopMenu 2 -OpenSubmenu -SubmenuDown $sizes[$size]
-      Assert $ok "tray-size-$size-command" "native menu selected Character Size -> $size"
+      $ok=InvokeMenuClick 3 $sizes[$size]
+      Assert $ok "tray-size-$size-command" "real mouse click selected Character Size -> $size"
       $expected=@{small=280;medium=360;large=460}[$size]
       $ok=Wait-Until {
         $z=Get-WindowHandle; if($z -eq [IntPtr]::Zero){return $null}
@@ -172,19 +181,19 @@ public static class TraySmokeKeys {
     }
 
     # Always on Top toggle twice.
-    Assert (InvokeTopMenu 3) "tray-always-on-top-toggle-1" "native menu selected Always on Top"
-    Assert (InvokeTopMenu 3) "tray-always-on-top-toggle-2" "native menu selected Always on Top again"
+    Assert (InvokeMenuClick 4) "tray-always-on-top-toggle-1" "real mouse click selected Always on Top"
+    Assert (InvokeMenuClick 4) "tray-always-on-top-toggle-2" "real mouse click selected Always on Top again"
 
     # Low Power toggle twice.
-    Assert (InvokeTopMenu 4) "tray-low-power-toggle-1" "native menu selected Low Power Mode"
-    Assert (InvokeTopMenu 4) "tray-low-power-toggle-2" "native menu selected Low Power Mode again"
+    Assert (InvokeMenuClick 5) "tray-low-power-toggle-1" "real mouse click selected Low Power Mode"
+    Assert (InvokeMenuClick 5) "tray-low-power-toggle-2" "real mouse click selected Low Power Mode again"
 
     # Debug -> Rotate once.
-    Assert (InvokeTopMenu 5 -OpenSubmenu -SubmenuDown 0) "tray-rotate-once-command" "native menu selected Debug -> Rotate once"
+    Assert (InvokeMenuClick 6 0) "tray-rotate-once-command" "real mouse click selected Debug -> Rotate once"
     Assert ((Get-WindowHandle) -ne [IntPtr]::Zero) "tray-rotate-once-stable" "character remained alive after Rotate once"
 
     # Change Character -> native file dialog, then cancel.
-    Assert (InvokeTopMenu 1) "tray-change-character-command" "native menu selected Change Character"
+    Assert (InvokeMenuClick 2) "tray-change-character-command" "real mouse click selected Change Character"
     Start-Sleep -Milliseconds 500
     $dialog=[TraySmokeWin32]::FindWindow("#32770",$null)
     Assert ($dialog -ne [IntPtr]::Zero) "tray-change-character-dialog" "Change Character opened the native file dialog"
