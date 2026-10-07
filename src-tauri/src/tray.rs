@@ -40,6 +40,9 @@ fn state_snapshot(app: &AppHandle) -> (bool, CharacterScale, bool, bool) {
 
 fn build_menu(app: &AppHandle) -> tauri::Result<tauri::menu::Menu<tauri::Wry>> {
     let (visible, scale, always_on_top, low_power) = state_snapshot(app);
+    let click_through = app.try_state::<AppState>()
+        .and_then(|state| state.settings.lock().ok().map(|settings| settings.character.click_through))
+        .unwrap_or(true);
 
     let show = MenuItemBuilder::with_id("show", "Show Saeed").enabled(!visible).build(app)?;
     let hide = MenuItemBuilder::with_id("hide", "Hide Saeed").enabled(visible).build(app)?;
@@ -62,6 +65,7 @@ fn build_menu(app: &AppHandle) -> tauri::Result<tauri::menu::Menu<tauri::Wry>> {
 
     let top = CheckMenuItemBuilder::with_id("top", "Always on Top").checked(always_on_top).build(app)?;
     let low = CheckMenuItemBuilder::with_id("low", "Low Power Mode").checked(low_power).build(app)?;
+    let click = CheckMenuItemBuilder::with_id("click", "Click-through").checked(click_through).build(app)?;
     let rotate = MenuItemBuilder::with_id("rotate", "Rotate once").build(app)?;
     let debug = SubmenuBuilder::new(app, "Debug").item(&rotate).build()?;
     let quit = MenuItemBuilder::with_id("quit", "Quit").build(app)?;
@@ -73,6 +77,7 @@ fn build_menu(app: &AppHandle) -> tauri::Result<tauri::menu::Menu<tauri::Wry>> {
         .item(&sizes)
         .item(&top)
         .item(&low)
+        .item(&click)
         .item(&debug)
         .item(&quit)
         .build()
@@ -116,6 +121,7 @@ pub fn install(app: &AppHandle) -> tauri::Result<()> {
             "large" => set_scale(app, CharacterScale::Large),
             "top" => toggle_top(app),
             "low" => toggle_low(app),
+            "click" => toggle_click_through(app),
             "rotate" => {
                 let _ = app::debug_rotate_once_core(app.clone());
             }
@@ -208,6 +214,22 @@ fn toggle_low(app: &AppHandle) {
     let state = app.state::<AppState>();
     let enabled = state.settings.lock().map(|s| !s.performance.low_power).unwrap_or(false);
     let _ = app::set_low_power_core(app.clone(), enabled, app.state());
+    refresh(app);
+}
+
+fn toggle_click_through(app: &AppHandle) {
+    let state = app.state::<AppState>();
+    let enabled = state.settings.lock().map(|s| !s.character.click_through).unwrap_or(true);
+    if let Ok(mut settings) = state.settings.lock() {
+        settings.character.click_through = enabled;
+        if let Ok(dir) = app::data_dir(app) {
+            let _ = settings.save(&dir);
+        }
+    }
+    if let Some(window) = app.get_webview_window("character") {
+        let _ = window.set_ignore_cursor_events(enabled);
+        let _ = window.emit("click-through-changed", enabled);
+    }
     refresh(app);
 }
 
