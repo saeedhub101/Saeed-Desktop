@@ -245,6 +245,7 @@ fn toggle_top(app: &AppHandle) {
                 state.logger.error(&format!("Tray Always on Top save failed: {}", err));
             }
         }
+        drop(settings);
         if let Some(window) = app.get_webview_window("character") {
             if let Err(err) = window.set_always_on_top(value) {
                 state.logger.error(&format!("Tray Always on Top window update failed: {}", err));
