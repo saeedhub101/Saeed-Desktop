@@ -180,6 +180,8 @@ pub(crate) fn destroy_character_window(app: &AppHandle) {
     };
 
     let state = app.state::<AppState>();
+    // A new Hide request cancels any pending Show-after-destroy request.
+    state.show_after_destroy.store(false, Ordering::SeqCst);
     // Runtime Hide updates the current tray state, but the next process launch
     // always starts with the character visible.
     set_visible(app, false);
