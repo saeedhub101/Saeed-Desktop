@@ -165,6 +165,7 @@ window.addEventListener("resize", () => {
 window.addEventListener("pointerdown", async (event) => {
   if (!model || event.button !== 0) return;
   dragging = true;
+  await invoke("set_character_interaction", { active: true }).catch(() => {});
   await windowHandle.setIgnoreCursorEvents(false).catch(() => {});
   await windowHandle.startDragging().catch(() => {});
 });
@@ -172,6 +173,14 @@ window.addEventListener("pointerdown", async (event) => {
 window.addEventListener("pointerup", async () => {
   if (!dragging) return;
   dragging = false;
+  await invoke("set_character_interaction", { active: false }).catch(() => {});
+  if (clickThrough) await windowHandle.setIgnoreCursorEvents(true).catch(() => {});
+});
+
+window.addEventListener("blur", async () => {
+  if (!dragging) return;
+  dragging = false;
+  await invoke("set_character_interaction", { active: false }).catch(() => {});
   if (clickThrough) await windowHandle.setIgnoreCursorEvents(true).catch(() => {});
 });
 
