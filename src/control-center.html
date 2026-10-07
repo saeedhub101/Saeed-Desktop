@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Saeed Control Center</title></head>
+<body>
+<main class="control-center">
+  <header><h1>Saeed Control Center</h1><p>Character configuration and diagnostics</p></header>
+  <nav role="tablist">
+    <button data-tab="characters" class="active">Character</button>
+    <button data-tab="rig">Rig Lab</button>
+    <button data-tab="brain">Brain</button>
+    <button data-tab="diagnostics">Diagnostics</button>
+  </nav>
+  <section id="characters" data-panel><h2>Character</h2><p>Current character, scale, visibility and renderer settings.</p></section>
+  <section id="rig" data-panel hidden><h2>Rig Lab</h2><p>Canonical bone mapping, Rest Pose, Axis Wizard and calibration motions.</p><div id="rig-status">No character selected.</div></section>
+  <section id="brain" data-panel hidden><h2>Brain & Conversation</h2><p>Conversation and provider configuration will use the shared session contract.</p></section>
+  <section id="diagnostics" data-panel hidden><h2>Diagnostics</h2><p id="diagnostics-status">Ready.</p></section>
+</main>
+<script type="module" src="/src/control-center.ts"></script>
+</body></html>
