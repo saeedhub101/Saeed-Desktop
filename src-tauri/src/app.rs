@@ -183,6 +183,7 @@ pub(crate) fn destroy_character_window(app: &AppHandle) {
     // Runtime Hide updates the current tray state, but the next process launch
     // always starts with the character visible.
     set_visible(app, false);
+    state.interaction_active.store(false, Ordering::SeqCst);
     cursor_probe::stop(app);
     if state.character_destroying.swap(true, Ordering::SeqCst) {
         return;
