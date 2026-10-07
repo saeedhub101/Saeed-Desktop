@@ -208,6 +208,9 @@ pub(crate) fn destroy_character_window(app: &AppHandle) {
 pub(crate) fn show_character_core(app: &AppHandle) -> Result<(), String> {
     if app.get_webview_window("character").is_none() {
         create_character_window(app)?;
+    } else if let Some(window) = app.get_webview_window("character") {
+        window.show().map_err(|e| e.to_string())?;
+        let _ = window.set_focus();
     }
     set_visible(app, true);
     tray::refresh(app);
