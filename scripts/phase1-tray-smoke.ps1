@@ -95,7 +95,7 @@ function Record-MenuFailures([string]$reason){
 "tray-menu-hide-command","tray-menu-hide-applied","tray-menu-show-command","tray-menu-show-applied",
     "tray-size-small-command","tray-size-small-applied","tray-size-medium-command","tray-size-medium-applied",
     "tray-size-large-command","tray-size-large-applied","tray-always-on-top-toggle-1","tray-always-on-top-toggle-2",
-    "tray-low-power-toggle-1","tray-low-power-toggle-2","tray-rotate-once-command","tray-rotate-once-stable",
+    "tray-low-power-toggle-1","tray-low-power-toggle-2","tray-click-through-toggle-1","tray-click-through-toggle-2","tray-rotate-once-command","tray-rotate-once-stable",
     "tray-change-character-command","tray-change-character-dialog","tray-quit-command","tray-quit","tray-process-lifetime"
   )
   foreach($n in $names){ Fail $n $reason }
@@ -213,7 +213,8 @@ function ClickMenuItem([IntPtr]$popup,[int]$index){
     Assert (InvokeMenuClick 5) "tray-low-power-toggle-2" "real mouse click selected Low Power Mode again"
 
     # Click-through toggle: disable it for direct interaction, then restore it.
-    Assert (InvokeMenuClick 6) "tray-click-through-toggle" "real mouse click toggled Click-through"
+    Assert (InvokeMenuClick 6) "tray-click-through-toggle-1" "real mouse click disabled Click-through"
+    Assert (InvokeMenuClick 6) "tray-click-through-toggle-2" "real mouse click re-enabled Click-through"
 
     # Debug -> Rotate once.
     Assert (InvokeMenuClick 7 0) "tray-rotate-once-command" "real mouse click selected Debug -> Rotate once"
