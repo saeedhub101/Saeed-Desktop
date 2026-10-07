@@ -17,8 +17,11 @@ pub struct CharacterSettings {
     pub scale: CharacterScale,
     pub always_on_top: bool,
     pub current_id: String,
+    #[serde(default = "default_click_through")]
     pub click_through: bool,
 }
+
+fn default_click_through() -> bool { true }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
