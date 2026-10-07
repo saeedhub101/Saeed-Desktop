@@ -273,6 +273,17 @@ fn clamp_character_window_position(window: &tauri::Window, x: i32, y: i32) {
     }
 }
 
+fn clamp_character_webview_position(window: &tauri::WebviewWindow, x: i32, y: i32) {
+    let Ok(Some(monitor)) = window.current_monitor() else { return };
+    let Ok(size) = window.outer_size() else { return };
+    let (x, y) = clamp_position(*monitor.work_area(), size, x, y);
+    if let Ok(current) = window.outer_position() {
+        if current.x != x || current.y != y {
+            let _ = window.set_position(tauri::PhysicalPosition::new(x, y));
+        }
+    }
+}
+
 fn position_character_above_tray(window: &tauri::WebviewWindow) -> Result<(), String> {
     let monitor = window
         .current_monitor()
@@ -338,7 +349,7 @@ pub(crate) fn set_character_scale_core(
         let size = character_size(scale);
         let _ = window.set_size(tauri::PhysicalSize::new(size as u32, size as u32));
         if let Ok(position) = window.outer_position() {
-            clamp_character_window_position(&window, position.x, position.y);
+            clamp_character_webview_position(&window, position.x, position.y);
         }
         let _ = window.emit("character-refit", ());
     }
