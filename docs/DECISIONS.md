@@ -19,3 +19,10 @@
 - Character Hide destroys the character WebView/renderer/model resources; it is never the application owner.
 - Voice resources will be tied to Character presence in later phases; if Character and Chat are both closed, Brain and voice resources are destroyed and only Tray/Core remains.
 - Existing Markdown specifications are retained; obsolete lifecycle-owner modules are removed instead of layering another manager over them.
+
+## 2026-10-07 — Phase 1–4 milestone
+- Phase 1–4 are treated as a product-development milestone, not four repair phases.
+- Phase 1 may contain shell/runtime fixes because that phase is already under acceptance hardening.
+- Phase 2 introduces the canonical rig/profile boundary. The Brain and future Character Engine must consume canonical intents and never reference Three.js or raw bone names.
+- Phase 3 owns procedural character behavior and motion. Motion is expressed as canonical deltas and is rendered on demand.
+- Phase 4 owns conversation persistence and Brain routing. Chat and future Voice input share one SQLite session model.
