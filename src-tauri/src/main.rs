@@ -3,6 +3,7 @@
 mod app;
 mod cursor_probe;
 mod logging;
+mod profile;
 mod settings;
 mod tray;
 
