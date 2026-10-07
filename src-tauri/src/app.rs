@@ -194,6 +194,9 @@ pub(crate) fn destroy_character_window(app: &AppHandle) {
         if let Some(window) = app_for_thread.get_webview_window("character") {
             let _ = window.destroy();
         }
+        if let Ok(mut slot) = app_for_thread.state::<AppState>().cleanup_ack.lock() {
+            *slot = None;
+        }
         let state = app_for_thread.state::<AppState>();
         state.character_destroying.store(false, Ordering::SeqCst);
         set_visible(&app_for_thread, false);
@@ -291,10 +294,19 @@ fn get_character_model(app: AppHandle, state: State<'_, AppState>) -> Result<Res
         .clone();
 
     let path = data_dir(&app)?.join("characters").join(id).join("model.glb");
-    if !path.exists() {
-        return Ok(Response::new(Vec::<u8>::new()));
+    if path.exists() {
+        return Ok(Response::new(fs::read(path).map_err(|e| e.to_string())?));
     }
-    Ok(Response::new(fs::read(path).map_err(|e| e.to_string())?))
+
+    // Phase 1 ships with a tiny valid GLB so the character window is
+    // interactive on a clean install. User-imported characters still live
+    // under %APPDATA%/Saeed/characters.
+    if id == "default" {
+        const DEFAULT_GLB: &[u8] = include_bytes!("../../src/assets/default.glb");
+        return Ok(Response::new(DEFAULT_GLB.to_vec()));
+    }
+
+    Ok(Response::new(Vec::<u8>::new()))
 }
 
 #[tauri::command]
