@@ -157,10 +157,11 @@ pub(crate) fn create_character_window(app: &AppHandle) -> Result<(), String> {
     .always_on_top(settings.character.always_on_top)
     .skip_taskbar(true)
     .resizable(false)
-    .visible(true);
+    .visible(false);
 
     let window = builder.build().map_err(|e| e.to_string())?;
     position_character_above_tray(&window)?;
+    window.show().map_err(|e| e.to_string())?;
     cursor_probe::start(app);
     let _ = window.set_focus();
     Ok(())
@@ -229,27 +230,27 @@ fn set_visible(app: &AppHandle, visible: bool) {
 }
 
 fn clamp_position(
-    monitor: &tauri::Monitor,
+    work_area: tauri::Rect,
     window_size: tauri::PhysicalSize<u32>,
     x: i32,
     y: i32,
 ) -> (i32, i32) {
-    let monitor_position = monitor.position();
-    let monitor_size = monitor.size();
-    let max_x = monitor_position.x
-        + monitor_size.width.saturating_sub(window_size.width) as i32;
-    let max_y = monitor_position.y
-        + monitor_size.height.saturating_sub(window_size.height) as i32;
+    let work_position = work_area.position;
+    let work_size = work_area.size;
+    let max_x = work_position.x
+        + work_size.width.saturating_sub(window_size.width) as i32;
+    let max_y = work_position.y
+        + work_size.height.saturating_sub(window_size.height) as i32;
     (
-        x.clamp(monitor_position.x, max_x),
-        y.clamp(monitor_position.y, max_y),
+        x.clamp(work_position.x, max_x),
+        y.clamp(work_position.y, max_y),
     )
 }
 
 fn clamp_character_window_position(window: &tauri::Window, x: i32, y: i32) {
     let Ok(Some(monitor)) = window.current_monitor() else { return };
     let Ok(size) = window.outer_size() else { return };
-    let (x, y) = clamp_position(&monitor, size, x, y);
+    let (x, y) = clamp_position(monitor.work_area(), size, x, y);
     if let Ok(current) = window.outer_position() {
         if current.x != x || current.y != y {
             let _ = window.set_position(tauri::PhysicalPosition::new(x, y));
@@ -271,7 +272,7 @@ fn position_character_above_tray(window: &tauri::WebviewWindow) -> Result<(), St
     let y = work_area.position.y
         + work_area.size.height.saturating_sub(size.height) as i32
         - margin;
-    let (x, y) = clamp_position(&monitor, size, x, y);
+    let (x, y) = clamp_position(work_area, size, x, y);
     window
         .set_position(tauri::PhysicalPosition::new(x, y))
         .map_err(|e| e.to_string())
