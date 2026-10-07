@@ -218,15 +218,21 @@ pub fn install(app: &AppHandle) -> tauri::Result<()> {
 fn choose_character(app: AppHandle) {
     thread::spawn(move || {
         if let Some(path) = FileDialog::new().add_filter("GLB model", &["glb"]).pick_file() {
-            let _ = app::import_character_core(app.clone(), path.to_string_lossy().to_string(), app.state());
-            refresh(&app);
+            match app::import_character_core(app.clone(), path.to_string_lossy().to_string(), app.state()) {
+                Ok(_) => refresh(&app),
+                Err(err) => app.state::<AppState>().logger.error(&format!("Tray Change Character failed: {}", err)),
+            }
+        } else if let Some(state) = app.try_state::<AppState>() {
+            state.logger.info("Tray Change Character dialog cancelled");
         }
     });
 }
 
 fn set_scale(app: &AppHandle, scale: CharacterScale) {
-    let _ = app::set_character_scale_core(app.clone(), scale, app.state());
-    refresh(app);
+    match app::set_character_scale_core(app.clone(), scale, app.state()) {
+        Ok(_) => refresh(app),
+        Err(err) => app.state::<AppState>().logger.error(&format!("Tray set scale {:?} failed: {}", scale, err)),
+    }
 }
 
 fn toggle_top(app: &AppHandle) {
@@ -235,10 +241,14 @@ fn toggle_top(app: &AppHandle) {
         settings.character.always_on_top = !settings.character.always_on_top;
         let value = settings.character.always_on_top;
         if let Ok(dir) = app::data_dir(app) {
-            let _ = settings.save(&dir);
+            if let Err(err) = settings.save(&dir) {
+                state.logger.error(&format!("Tray Always on Top save failed: {}", err));
+            }
         }
         if let Some(window) = app.get_webview_window("character") {
-            let _ = window.set_always_on_top(value);
+            if let Err(err) = window.set_always_on_top(value) {
+                state.logger.error(&format!("Tray Always on Top window update failed: {}", err));
+            }
         }
     }
     refresh(app);
@@ -247,8 +257,11 @@ fn toggle_top(app: &AppHandle) {
 fn toggle_low(app: &AppHandle) {
     let state = app.state::<AppState>();
     let enabled = state.settings.lock().map(|s| !s.performance.low_power).unwrap_or(false);
-    let _ = app::set_low_power_core(app.clone(), enabled, app.state());
-    refresh(app);
+    if let Err(err) = app::set_low_power_core(app.clone(), enabled, app.state()) {
+        state.logger.error(&format!("Tray Low Power Mode failed: {}", err));
+    } else {
+        refresh(app);
+    }
 }
 
 fn toggle_click_through(app: &AppHandle) {
@@ -257,20 +270,37 @@ fn toggle_click_through(app: &AppHandle) {
     if let Ok(mut settings) = state.settings.lock() {
         settings.character.click_through = enabled;
         if let Ok(dir) = app::data_dir(app) {
-            let _ = settings.save(&dir);
+            if let Err(err) = settings.save(&dir) {
+                state.logger.error(&format!("Tray Click-through save failed: {}", err));
+            }
         }
     }
     if let Some(window) = app.get_webview_window("character") {
-        let _ = window.set_ignore_cursor_events(enabled);
-        let _ = window.emit("click-through-changed", enabled);
+        if let Err(err) = window.set_ignore_cursor_events(enabled) {
+            state.logger.error(&format!("Tray Click-through window update failed: {}", err));
+        }
+        if let Err(err) = window.emit("click-through-changed", enabled) {
+            state.logger.error(&format!("Tray Click-through event failed: {}", err));
+        }
     }
     refresh(app);
 }
 
 pub fn refresh(app: &AppHandle) {
     if let Ok(menu) = build_menu(app) {
-        if let Some(tray) = app.tray_by_id("default") {
-            let _ = tray.set_menu(Some(menu));
+        if let Some(tray) = app.tray_by_id(TRAY_ID) {
+            if let Err(err) = tray.set_menu(Some(menu)) {
+                if let Some(state) = app.try_state::<AppState>() {
+                    state.logger.error(&format!("Tray menu refresh failed: {}", err));
+                }
+            } else if let Some(state) = app.try_state::<AppState>() {
+                state.logger.info("Tray menu refreshed");
+            }
+        } else if let Some(state) = app.try_state::<AppState>() {
+            state.logger.error("Tray menu refresh failed: tray not found");
         }
+    } else if let Some(state) = app.try_state::<AppState>() {
+        state.logger.error("Tray menu rebuild failed");
+    }
     }
 }
