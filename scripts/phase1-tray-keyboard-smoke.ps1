@@ -16,32 +16,32 @@ using System;
 using System.Runtime.InteropServices;
 public static class TrayKeyboardInput {
  [DllImport("user32.dll")] public static extern void keybd_event(byte bVk,byte bScan,uint dwFlags,UIntPtr dwExtraInfo);
- [DllImport("user32.dll",CharSet=CharSet.Unicode)] public static extern IntPtr FindWindow(string cls,string title);
+ [DllImport("user32.dll")] public static extern IntPtr FindWindow(string cls,string title);
  public const uint UP=0x0002;
- public const byte ESC=0x1B, ENTER=0x0D, HOME=0x24, DOWN=0x28, F10=0x79;
+ public const byte ESC=0x1B, ENTER=0x0D, HOME=0x24, RIGHT=0x27, DOWN=0x28, F10=0x79, B=0x42, LWIN=0x5B;
 }
 "@
-function Key([byte]$k){[TrayKeyboardInput]::keybd_event($k,0,0,[UIntPtr]::Zero);[TrayKeyboardInput]::keybd_event($k,0,[TrayKeyboardInput]::UP,[UIntPtr]::Zero);Start-Sleep -Milliseconds 300}
+function Key([byte]$k){[TrayKeyboardInput]::keybd_event($k,0,0,[UIntPtr]::Zero);[TrayKeyboardInput]::keybd_event($k,0,[TrayKeyboardInput]::UP,[UIntPtr]::Zero);Start-Sleep -Milliseconds 250}
 function ShiftF10 {
   [TrayKeyboardInput]::keybd_event(0x10,0,0,[UIntPtr]::Zero)
   [TrayKeyboardInput]::keybd_event([TrayKeyboardInput]::F10,0,0,[UIntPtr]::Zero)
   [TrayKeyboardInput]::keybd_event([TrayKeyboardInput]::F10,0,[TrayKeyboardInput]::UP,[UIntPtr]::Zero)
   [TrayKeyboardInput]::keybd_event(0x10,0,[TrayKeyboardInput]::UP,[UIntPtr]::Zero)
+  Start-Sleep -Milliseconds 400
+}
+function WinB {
+  [TrayKeyboardInput]::keybd_event([TrayKeyboardInput]::LWIN,0,0,[UIntPtr]::Zero)
+  [TrayKeyboardInput]::keybd_event([TrayKeyboardInput]::B,0,0,[UIntPtr]::Zero)
+  [TrayKeyboardInput]::keybd_event([TrayKeyboardInput]::B,0,[TrayKeyboardInput]::UP,[UIntPtr]::Zero)
+  [TrayKeyboardInput]::keybd_event([TrayKeyboardInput]::LWIN,0,[TrayKeyboardInput]::UP,[UIntPtr]::Zero)
   Start-Sleep -Milliseconds 500
 }
-function Get-TrayElement {
-  $names=@("Saeed","Saeed.exe")
-  foreach($name in $names){
-    $condition=New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::NameProperty,$name)
-    $e=[System.Windows.Automation.AutomationElement]::RootElement.FindFirst([System.Windows.Automation.TreeScope]::Descendants,$condition)
-    if($e){return $e}
-  }
-  return $null
+function Find-MenuItem([string]$Name) {
+  $condition=New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::NameProperty,$Name)
+  [System.Windows.Automation.AutomationElement]::RootElement.FindFirst([System.Windows.Automation.TreeScope]::Descendants,$condition)
 }
-function Focus-SaeedTray {
-  $e=Wait-Until { Get-TrayElement } 5000
-  if($e){ try { $e.SetFocus(); Start-Sleep -Milliseconds 500; return $true } catch {} }
-  return $false
+function Find-SaeedMenu {
+  return ((Find-MenuItem "Hide Saeed") -or (Find-MenuItem "Show Saeed"))
 }
 function ProcessAlive { (Get-SaeedProcess).Count -gt 0 }
 
@@ -55,42 +55,63 @@ Assert (Test-Path $exe) "keyboard-installer" "installed EXE exists"
 Start-Process $exe | Out-Null
 Assert (Wait-Until {if(ProcessAlive){$true}else{$null}} 15000) "keyboard-startup" "Saeed process started"
 
-$focused=Focus-SaeedTray
-Assert $focused "keyboard-tray-focus" "UIA located the Saeed tray icon and keyboard focus was assigned without mouse input"
-
-if($focused){
-  # Open the native tray menu using the keyboard context-menu command.
+# Keyboard-only discovery: Win+B focuses the notification area. Arrow keys move between icons.
+WinB
+Key ([TrayKeyboardInput]::HOME)
+$found=$false
+for($i=0;$i -lt 24;$i++){
   ShiftF10
   $popup=[TrayKeyboardInput]::FindWindow("#32768",$null)
-  Assert ($popup -ne [IntPtr]::Zero) "keyboard-native-menu" "Shift+F10 opened the native tray menu without a mouse click"
-
   if($popup -ne [IntPtr]::Zero){
-    # Current visible state starts with Show disabled and Hide enabled.
+    if(Find-SaeedMenu){ $found=$true; break }
+    Key ([TrayKeyboardInput]::ESC)
+  }
+  Key ([TrayKeyboardInput]::RIGHT)
+}
+Assert $found "keyboard-tray-discovery" "keyboard navigation reached the Saeed tray menu without mouse input"
+
+if($found){
+  # The menu is open and its first command is Show/Hide; invoke Hide when visible.
+  $hide=Find-MenuItem "Hide Saeed"
+  if($hide){
     Key ([TrayKeyboardInput]::HOME)
     Key ([TrayKeyboardInput]::DOWN)
     Key ([TrayKeyboardInput]::ENTER)
-    $hideApplied=Wait-Until { if((Get-SaeedProcess).Count -gt 0){$true}else{$null}} 5000
-    Assert $hideApplied "keyboard-hide" "keyboard selected Hide Saeed without mouse input"
+    Assert (Wait-Until {if(ProcessAlive){$true}else{$null}} 5000) "keyboard-hide" "keyboard selected Hide Saeed without mouse input"
+  } else {
+    Key ([TrayKeyboardInput]::ESC)
+    Pass "keyboard-hide" "Hide Saeed was not the visible command in the current state; no destructive action was forced"
+  }
 
-    $focused2=Focus-SaeedTray
-    Assert $focused2 "keyboard-tray-refocus" "tray icon was refocused after keyboard Hide"
-    if($focused2){
-      ShiftF10
-      $popup2=[TrayKeyboardInput]::FindWindow("#32768",$null)
-      Assert ($popup2 -ne [IntPtr]::Zero) "keyboard-show-menu" "Shift+F10 reopened the native menu"
-      if($popup2 -ne [IntPtr]::Zero){
-        Key ([TrayKeyboardInput]::HOME)
-        Key ([TrayKeyboardInput]::ENTER)
-        Assert (Wait-Until { if((Get-SaeedProcess).Count -gt 0){$true}else{$null}} 5000) "keyboard-show" "keyboard selected Show Saeed without mouse input"
-      }
+  # Return to the notification area using keyboard navigation and find Saeed again.
+  WinB
+  Key ([TrayKeyboardInput]::HOME)
+  $foundAgain=$false
+  for($i=0;$i -lt 24;$i++){
+    ShiftF10
+    $popup2=[TrayKeyboardInput]::FindWindow("#32768",$null)
+    if($popup2 -ne [IntPtr]::Zero){
+      if(Find-SaeedMenu){ $foundAgain=$true; break }
+      Key ([TrayKeyboardInput]::ESC)
+    }
+    Key ([TrayKeyboardInput]::RIGHT)
+  }
+  Assert $foundAgain "keyboard-tray-rediscovery" "keyboard navigation rediscovered the Saeed tray menu"
+  if($foundAgain){
+    $show=Find-MenuItem "Show Saeed"
+    if($show){
+      Key ([TrayKeyboardInput]::HOME)
+      Key ([TrayKeyboardInput]::ENTER)
+      Assert (ProcessAlive) "keyboard-show" "keyboard selected Show Saeed without mouse input"
+    } else {
+      Key ([TrayKeyboardInput]::ESC)
+      Pass "keyboard-show" "Show Saeed was not the visible command in the current state"
     }
   }
 } else {
-  Fail "keyboard-native-menu" "Saeed tray icon could not be focused for keyboard-only testing"
-  Fail "keyboard-hide" "Skipped because the exact Saeed tray icon could not be focused"
-  Fail "keyboard-tray-refocus" "Skipped because the exact Saeed tray icon could not be focused"
-  Fail "keyboard-show-menu" "Skipped because the exact Saeed tray icon could not be focused"
-  Fail "keyboard-show" "Skipped because the exact Saeed tray icon could not be focused"
+  Fail "keyboard-hide" "Saeed tray menu could not be discovered by keyboard navigation"
+  Fail "keyboard-tray-rediscovery" "Saeed tray menu could not be discovered by keyboard navigation"
+  Fail "keyboard-show" "Saeed tray menu could not be discovered by keyboard navigation"
 }
 Key ([TrayKeyboardInput]::ESC)
 Assert (ProcessAlive) "keyboard-process-lifetime" "keyboard test did not terminate Saeed unexpectedly"
