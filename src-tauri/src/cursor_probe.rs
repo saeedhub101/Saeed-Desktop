@@ -41,8 +41,11 @@ fn run(app: &AppHandle, id: u64) {
             .try_state::<AppState>()
             .and_then(|s| s.settings.lock().ok().map(|settings| settings.character.click_through))
             .unwrap_or(true);
-        if !click_through {
-            thread::sleep(Duration::from_millis(200));
+        let interaction_active = app
+            .try_state::<AppState>()
+            .is_some_and(|s| s.interaction_active.load(Ordering::SeqCst));
+        if interaction_active || !click_through {
+            thread::sleep(Duration::from_millis(100));
             continue;
         }
 
