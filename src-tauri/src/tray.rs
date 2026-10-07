@@ -302,5 +302,4 @@ pub fn refresh(app: &AppHandle) {
     } else if let Some(state) = app.try_state::<AppState>() {
         state.logger.error("Tray menu rebuild failed");
     }
-    }
 }
