@@ -100,8 +100,9 @@ function fitModel() {
 
 async function load() {
   disposed = false;
-  const settings = await invoke<Settings>("get_settings");
-  renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true, powerPreference: settings.performance.lowPower ? "low-power" : "high-performance" });
+  try {
+    const settings = await invoke<Settings>("get_settings");
+    renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true, powerPreference: settings.performance.lowPower ? "low-power" : "high-performance" });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, settings.performance.lowPower ? 1 : 2));
   renderer.setSize(window.innerWidth, window.innerHeight, false);
   renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -136,12 +137,16 @@ async function load() {
     await invoke("log_error", { message: `GLB load failed: ${String(error)}` }).catch(() => {});
     requestRender();
   }
+  } catch (error) {
+    setStatus("Unable to initialize the character.");
+    await invoke("log_error", { message: `Character initialization failed: ${String(error)}` }).catch(() => {});
+  }
 }
 
-async function recreate(lowPower: boolean) {
+async function recreate(_lowPower: boolean) {
+  // Rust persists the requested setting before emitting renderer-recreate.
+  // Reload settings from the source of truth inside load().
   disposeRenderer();
-  const settings = await invoke<Settings>("get_settings");
-  settings.performance.lowPower = lowPower;
   await load();
 }
 
