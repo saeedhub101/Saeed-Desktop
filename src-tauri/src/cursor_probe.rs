@@ -37,6 +37,14 @@ fn run(app: &AppHandle, id: u64) {
     while current(app, id) {
         let Some(window) = app.get_webview_window("character") else { break };
         let mut delay = FAR;
+        let click_through = app
+            .try_state::<AppState>()
+            .and_then(|s| s.settings.lock().ok().map(|settings| settings.character.click_through))
+            .unwrap_or(true);
+        if !click_through {
+            thread::sleep(Duration::from_millis(200));
+            continue;
+        }
 
         if let (Ok(cursor), Ok(position), Ok(size)) =
             (window.cursor_position(), window.inner_position(), window.inner_size())
