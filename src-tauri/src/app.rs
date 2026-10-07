@@ -349,6 +349,7 @@ pub(crate) fn set_character_scale_core(
     let mut settings = state.settings.lock().map_err(|_| "settings lock".to_string())?;
     settings.character.scale = scale;
     settings.save(&data_dir(&app)?)?;
+    drop(settings);
     if let Some(window) = app.get_webview_window("character") {
         let size = character_size(scale);
         let _ = window.set_size(tauri::PhysicalSize::new(size as u32, size as u32));
