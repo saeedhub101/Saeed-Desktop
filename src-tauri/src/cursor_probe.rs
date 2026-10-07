@@ -45,6 +45,10 @@ fn run(app: &AppHandle, id: u64) {
             .try_state::<AppState>()
             .is_some_and(|s| s.interaction_active.load(Ordering::SeqCst));
         if interaction_active || !click_through {
+            // Interaction/drag always owns hit-testing. Do not leave stale
+            // "inside" state that can be applied when probing resumes.
+            was_inside = false;
+            last = None;
             thread::sleep(Duration::from_millis(100));
             continue;
         }
