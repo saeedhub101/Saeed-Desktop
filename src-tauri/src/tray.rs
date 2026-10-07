@@ -12,6 +12,19 @@ use crate::{
     settings::CharacterScale,
 };
 
+const TRAY_ID: &str = "default";
+const MENU_SHOW: &str = "tray_show";
+const MENU_HIDE: &str = "tray_hide";
+const MENU_CHANGE: &str = "tray_change";
+const MENU_SMALL: &str = "tray_size_small";
+const MENU_MEDIUM: &str = "tray_size_medium";
+const MENU_LARGE: &str = "tray_size_large";
+const MENU_TOP: &str = "tray_always_on_top";
+const MENU_LOW: &str = "tray_low_power";
+const MENU_CLICK_THROUGH: &str = "tray_click_through";
+const MENU_ROTATE: &str = "tray_rotate_once";
+const MENU_QUIT: &str = "tray_quit";
+
 fn character_is_visible(app: &AppHandle) -> bool {
     if let Some(state) = app.try_state::<AppState>() {
         if state.character_destroying.load(std::sync::atomic::Ordering::SeqCst) {
@@ -44,17 +57,17 @@ fn build_menu(app: &AppHandle) -> tauri::Result<tauri::menu::Menu<tauri::Wry>> {
         .and_then(|state| state.settings.lock().ok().map(|settings| settings.character.click_through))
         .unwrap_or(true);
 
-    let show = MenuItemBuilder::with_id("show", "Show Saeed").enabled(!visible).build(app)?;
-    let hide = MenuItemBuilder::with_id("hide", "Hide Saeed").enabled(visible).build(app)?;
-    let change = MenuItemBuilder::with_id("change", "Change Character...").build(app)?;
+    let show = MenuItemBuilder::with_id(MENU_SHOW, "Show Saeed").enabled(!visible).build(app)?;
+    let hide = MenuItemBuilder::with_id(MENU_HIDE, "Hide Saeed").enabled(visible).build(app)?;
+    let change = MenuItemBuilder::with_id(MENU_CHANGE, "Change Character...").build(app)?;
 
-    let small = CheckMenuItemBuilder::with_id("small", "Small")
+    let small = CheckMenuItemBuilder::with_id(MENU_SMALL, "Small")
         .checked(matches!(scale, CharacterScale::Small))
         .build(app)?;
-    let medium = CheckMenuItemBuilder::with_id("medium", "Medium")
+    let medium = CheckMenuItemBuilder::with_id(MENU_MEDIUM, "Medium")
         .checked(matches!(scale, CharacterScale::Medium))
         .build(app)?;
-    let large = CheckMenuItemBuilder::with_id("large", "Large")
+    let large = CheckMenuItemBuilder::with_id(MENU_LARGE, "Large")
         .checked(matches!(scale, CharacterScale::Large))
         .build(app)?;
     let sizes = SubmenuBuilder::new(app, "Character Size")
@@ -63,12 +76,12 @@ fn build_menu(app: &AppHandle) -> tauri::Result<tauri::menu::Menu<tauri::Wry>> {
         .item(&large)
         .build()?;
 
-    let top = CheckMenuItemBuilder::with_id("top", "Always on Top").checked(always_on_top).build(app)?;
-    let low = CheckMenuItemBuilder::with_id("low", "Low Power Mode").checked(low_power).build(app)?;
-    let click = CheckMenuItemBuilder::with_id("click", "Click-through").checked(click_through).build(app)?;
-    let rotate = MenuItemBuilder::with_id("rotate", "Rotate once").build(app)?;
+    let top = CheckMenuItemBuilder::with_id(MENU_TOP, "Always on Top").checked(always_on_top).build(app)?;
+    let low = CheckMenuItemBuilder::with_id(MENU_LOW, "Low Power Mode").checked(low_power).build(app)?;
+    let click = CheckMenuItemBuilder::with_id(MENU_CLICK_THROUGH, "Click-through").checked(click_through).build(app)?;
+    let rotate = MenuItemBuilder::with_id(MENU_ROTATE, "Rotate once").build(app)?;
     let debug = SubmenuBuilder::new(app, "Debug").item(&rotate).build()?;
-    let quit = MenuItemBuilder::with_id("quit", "Quit").build(app)?;
+    let quit = MenuItemBuilder::with_id(MENU_QUIT, "Quit").build(app)?;
 
     MenuBuilder::new(app)
         .item(&show)
@@ -101,32 +114,53 @@ pub fn install(app: &AppHandle) -> tauri::Result<()> {
     let menu = build_menu(app)?;
     let icon = tauri::include_image!("./icons/32x32.png");
 
-    TrayIconBuilder::with_id("default")
+    TrayIconBuilder::with_id(TRAY_ID)
         .icon(icon)
         .tooltip("Saeed")
         .menu(&menu)
         .show_menu_on_left_click(false)
-        .on_menu_event(|app, event| match event.id().as_ref() {
-            "show" => {
-                let _ = app::show_character_core(app);
-                refresh(app);
+        .on_menu_event(|app, event| {
+            let id = event.id().as_ref();
+            if let Some(state) = app.try_state::<AppState>() {
+                state.logger.info(&format!("Tray menu event received: id={}", id));
             }
-            "hide" => {
-                let _ = app::hide_character_core(app.clone());
-                refresh(app);
+            match id {
+            MENU_SHOW => {
+                match app::show_character_core(app) {
+                    Ok(_) => refresh(app),
+                    Err(err) => app.state::<AppState>().logger.error(&format!("Tray show failed: {}", err)),
+                }
             }
-            "change" => choose_character(app.clone()),
-            "small" => set_scale(app, CharacterScale::Small),
-            "medium" => set_scale(app, CharacterScale::Medium),
-            "large" => set_scale(app, CharacterScale::Large),
-            "top" => toggle_top(app),
-            "low" => toggle_low(app),
-            "click" => toggle_click_through(app),
-            "rotate" => {
-                let _ = app::debug_rotate_once_core(app.clone());
+            MENU_HIDE => {
+                match app::hide_character_core(app.clone()) {
+                    Ok(_) => refresh(app),
+                    Err(err) => app.state::<AppState>().logger.error(&format!("Tray hide failed: {}", err)),
+                }
             }
-            "quit" => app.exit(0),
-            _ => {}
+            MENU_CHANGE => choose_character(app.clone()),
+            MENU_SMALL => set_scale(app, CharacterScale::Small),
+            MENU_MEDIUM => set_scale(app, CharacterScale::Medium),
+            MENU_LARGE => set_scale(app, CharacterScale::Large),
+            MENU_TOP => toggle_top(app),
+            MENU_LOW => toggle_low(app),
+            MENU_CLICK_THROUGH => toggle_click_through(app),
+            MENU_ROTATE => {
+                match app::debug_rotate_once_core(app.clone()) {
+                    Ok(_) => {}
+                    Err(err) => app.state::<AppState>().logger.error(&format!("Tray rotate failed: {}", err)),
+                }
+            }
+            MENU_QUIT => {
+                if let Some(state) = app.try_state::<AppState>() {
+                    state.logger.info("Tray Quit command received");
+                }
+                app.exit(0);
+            }
+            _ => {
+                if let Some(state) = app.try_state::<AppState>() {
+                    state.logger.error(&format!("Unhandled tray menu event: id={}", id));
+                }
+            }
         })
         .on_tray_icon_event(|tray, event| {
             if let TrayIconEvent::Click {
@@ -161,7 +195,7 @@ pub fn install(app: &AppHandle) -> tauri::Result<()> {
     let app_for_rect = app.clone();
     thread::spawn(move || {
         for _ in 0..20 {
-            if let Some(tray) = app_for_rect.tray_by_id("default") {
+            if let Some(tray) = app_for_rect.tray_by_id(TRAY_ID) {
                 if let Ok(Some(rect)) = tray.rect() {
                     let (x, y) = position_xy(rect.position);
                     let (w, h) = size_wh(rect.size);
