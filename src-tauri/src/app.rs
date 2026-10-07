@@ -232,8 +232,9 @@ pub(crate) fn show_character_core(app: &AppHandle) -> Result<(), String> {
     Ok(())
 }
 
-pub(crate) fn hide_character_core(app: AppHandle) {
+pub(crate) fn hide_character_core(app: AppHandle) -> Result<(), String> {
     destroy_character_window(&app);
+    Ok(())
 }
 
 fn set_visible(app: &AppHandle, visible: bool) {
