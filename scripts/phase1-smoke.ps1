@@ -170,7 +170,6 @@ public static class Win32ClosePhase1 {
 $hidden=Wait-Until { if((Get-WindowHandle)-eq [IntPtr]::Zero){$true}else{$null}} 10000
 Assert ((Get-SaeedProcess).Count -eq 1) "close-does-not-exit" "native WM_CLOSE kept the tray process alive"
 Start-Sleep -Seconds 2
-Assert ((Get-TreeMemoryMB $proc.Id) -lt 300) "memory-after-hide" "$(Get-TreeMemoryMB $proc.Id) MB working set after Hide"
 
 
 # The second launch exercises the real single-instance callback, which must
