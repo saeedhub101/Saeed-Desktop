@@ -88,7 +88,9 @@ $line=Wait-Until {
 Assert ($null -ne $line) "tray-native-geometry" "native Tauri tray rect was reported without UI Automation"
 function Record-MenuFailures([string]$reason){
   $names=@(
-    "tray-menu-hide-command","tray-menu-hide-applied","tray-menu-show-command","tray-menu-show-applied",
+    "tray-native-geometry","tray-geometry-valid",
+    "tray-left-click-hide","tray-left-click-show","tray-right-click-menu",
+"tray-menu-hide-command","tray-menu-hide-applied","tray-menu-show-command","tray-menu-show-applied",
     "tray-size-small-command","tray-size-small-applied","tray-size-medium-command","tray-size-medium-applied",
     "tray-size-large-command","tray-size-large-applied","tray-always-on-top-toggle-1","tray-always-on-top-toggle-2",
     "tray-low-power-toggle-1","tray-low-power-toggle-2","tray-rotate-once-command","tray-rotate-once-stable",
