@@ -133,7 +133,7 @@ async function load() {
     const gltf = await new GLTFLoader().parseAsync(buffer, "");
     model = gltf.scene;
     scene.add(model);
-    await windowHandle.setIgnoreCursorEvents(true).catch(() => {});
+    await windowHandle.setIgnoreCursorEvents(clickThrough).catch(() => {});
     setStatus("");
     fitModel();
   } catch (error) {
