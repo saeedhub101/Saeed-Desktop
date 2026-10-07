@@ -95,14 +95,9 @@ function Get-WindowHandle {
 function Get-Rect([IntPtr]$Handle) {
   $rect=New-Object Win32Input+RECT
   if($Handle -eq [IntPtr]::Zero -or ![Win32Input]::IsWindow($Handle)){ return $null }
-    throw "GetWindowRect received a stale window handle"
-  }
   if(![Win32Input]::GetWindowRect($Handle,[ref]$rect)){ return $null }
-    throw "GetWindowRect failed"
-  }
   return $rect
 }
-
 $script:CurrentTest = "setup"
 # The smoke suite is deliberately non-fail-fast. Runtime/UIA exceptions are recorded as FAIL and execution continues.
 function Record-Exception([string]$name,[System.Exception]$error) { Fail $name $error.Exception.Message }
