@@ -20,6 +20,7 @@ using System.Runtime.InteropServices;
 public static class TraySmokeWin32 {
  [DllImport("user32.dll",CharSet=CharSet.Unicode)] public static extern IntPtr FindWindow(string lpClassName,string lpWindowName);
  [DllImport("user32.dll")] public static extern bool IsWindow(IntPtr hWnd);
+ [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr hWnd);
  [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hWnd,out RECT rect);
  [DllImport("user32.dll")] public static extern bool SetCursorPos(int X,int Y);
  [DllImport("user32.dll")] public static extern void mouse_event(uint flags,uint dx,uint dy,uint data,UIntPtr extra);
@@ -45,6 +46,7 @@ function Get-WindowHandle {
 }
 function ClickPoint([int]$x,[int]$y,[bool]$right=$false){
   [TraySmokeWin32]::SetCursorPos($x,$y)|Out-Null
+  Start-Sleep -Milliseconds 200
   if($right){
     [TraySmokeWin32]::mouse_event([TraySmokeWin32]::RIGHTDOWN,0,0,0,[UIntPtr]::Zero)
     [TraySmokeWin32]::mouse_event([TraySmokeWin32]::RIGHTUP,0,0,0,[UIntPtr]::Zero)
@@ -106,7 +108,7 @@ if($line){
     $tx=$x+[int]($w/2);$ty=$y+[int]($hh/2)
 
     ClickPoint $tx $ty $false
-    $hidden=Wait-Until { if((Get-WindowHandle)-eq [IntPtr]::Zero){$true}else{$null}} 10000
+    $hidden=Wait-Until { if(-not [TraySmokeWin32]::IsWindowVisible((Get-WindowHandle))){$true}else{$null}} 10000
     Assert $hidden "tray-left-click-hide" "native mouse click on the real tray rectangle hid/destroyed the character"
 
     ClickPoint $tx $ty $false
@@ -181,7 +183,7 @@ function ClickMenuItem([IntPtr]$popup,[int]$index){
 
     # Show/Hide: click the enabled item itself. The disabled counterpart is not clicked.
     Assert (InvokeMenuClick 1) "tray-menu-hide-command" "real mouse click selected Hide Saeed"
-    $hidden=Wait-Until { if((Get-WindowHandle)-eq [IntPtr]::Zero){$true}else{$null}} 5000
+    $hidden=Wait-Until { if(-not [TraySmokeWin32]::IsWindowVisible((Get-WindowHandle))){$true}else{$null}} 5000
     Assert $hidden "tray-menu-hide-applied" "Hide command destroyed the character window"
 
     Assert (InvokeMenuClick 0) "tray-menu-show-command" "real mouse click selected Show Saeed"
@@ -210,8 +212,11 @@ function ClickMenuItem([IntPtr]$popup,[int]$index){
     Assert (InvokeMenuClick 5) "tray-low-power-toggle-1" "real mouse click selected Low Power Mode"
     Assert (InvokeMenuClick 5) "tray-low-power-toggle-2" "real mouse click selected Low Power Mode again"
 
+    # Click-through toggle: disable it for direct interaction, then restore it.
+    Assert (InvokeMenuClick 6) "tray-click-through-toggle" "real mouse click toggled Click-through"
+
     # Debug -> Rotate once.
-    Assert (InvokeMenuClick 6 0) "tray-rotate-once-command" "real mouse click selected Debug -> Rotate once"
+    Assert (InvokeMenuClick 7 0) "tray-rotate-once-command" "real mouse click selected Debug -> Rotate once"
     Assert ((Get-WindowHandle) -ne [IntPtr]::Zero) "tray-rotate-once-stable" "character remained alive after Rotate once"
 
     # Change Character -> native file dialog, then cancel.
@@ -222,7 +227,7 @@ function ClickMenuItem([IntPtr]$popup,[int]$index){
 if($dialog -ne [IntPtr]::Zero){ [TraySmokeKeys]::keybd_event(0x1B,0,0,[UIntPtr]::Zero); [TraySmokeKeys]::keybd_event(0x1B,0,[TraySmokeKeys]::KEYUP,[UIntPtr]::Zero) }
 
     # Quit is final and must terminate the application.
-Assert (InvokeMenuClick 7) "tray-quit-command" "real mouse click selected Quit"
+Assert (InvokeMenuClick 8) "tray-quit-command" "real mouse click selected Quit"
     $exited=Wait-Until { if((Get-SaeedProcess).Count -eq 0){$true}else{$null}} 10000
     Assert $exited "tray-quit" "Quit removed the Saeed process"
     Assert ((Get-SaeedProcess).Count -eq 0) "tray-process-lifetime" "Quit terminated the application"
