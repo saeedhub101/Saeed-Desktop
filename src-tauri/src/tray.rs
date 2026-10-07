@@ -161,6 +161,7 @@ pub fn install(app: &AppHandle) -> tauri::Result<()> {
                     state.logger.error(&format!("Unhandled tray menu event: id={}", id));
                 }
             }
+            }
         })
         .on_tray_icon_event(|tray, event| {
             if let TrayIconEvent::Click {
