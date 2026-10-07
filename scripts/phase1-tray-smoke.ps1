@@ -226,7 +226,7 @@ Assert (InvokeMenuClick 7) "tray-quit-command" "real mouse click selected Quit"
     Assert ((Get-SaeedProcess).Count -eq 0) "tray-process-lifetime" "Quit terminated the application"
   }
 else {
-  Record-MenuFailures "tray icon geometry was unavailable; native mouse click could not be executed"
+  Record-MenuFailures "tray icon geometry log line had an invalid format"
 }
 }
 else {
