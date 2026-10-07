@@ -216,6 +216,30 @@ Assert (InvokeMenuClick 7) "tray-quit-command" "real mouse click selected Quit"
     Assert ((Get-SaeedProcess).Count -eq 0) "tray-process-lifetime" "Quit terminated the application"
   }
 }
+  else {
+    # No tray rectangle: record every dependent check rather than silently skipping them.
+    Fail "tray-menu-hide-command" "tray icon geometry was unavailable; native mouse click could not be executed"
+    Fail "tray-menu-hide-applied" "tray icon geometry was unavailable; native mouse click could not be executed"
+    Fail "tray-menu-show-command" "tray icon geometry was unavailable; native mouse click could not be executed"
+    Fail "tray-menu-show-applied" "tray icon geometry was unavailable; native mouse click could not be executed"
+    Fail "tray-size-small-command" "tray icon geometry was unavailable; native mouse click could not be executed"
+    Fail "tray-size-small-applied" "tray icon geometry was unavailable; native mouse click could not be executed"
+    Fail "tray-size-medium-command" "tray icon geometry was unavailable; native mouse click could not be executed"
+    Fail "tray-size-medium-applied" "tray icon geometry was unavailable; native mouse click could not be executed"
+    Fail "tray-size-large-command" "tray icon geometry was unavailable; native mouse click could not be executed"
+    Fail "tray-size-large-applied" "tray icon geometry was unavailable; native mouse click could not be executed"
+    Fail "tray-always-on-top-toggle-1" "tray icon geometry was unavailable; native mouse click could not be executed"
+    Fail "tray-always-on-top-toggle-2" "tray icon geometry was unavailable; native mouse click could not be executed"
+    Fail "tray-low-power-toggle-1" "tray icon geometry was unavailable; native mouse click could not be executed"
+    Fail "tray-low-power-toggle-2" "tray icon geometry was unavailable; native mouse click could not be executed"
+    Fail "tray-rotate-once-command" "tray icon geometry was unavailable; native mouse click could not be executed"
+    Fail "tray-rotate-once-stable" "tray icon geometry was unavailable; native mouse click could not be executed"
+    Fail "tray-change-character-command" "tray icon geometry was unavailable; native mouse click could not be executed"
+    Fail "tray-change-character-dialog" "tray icon geometry was unavailable; native mouse click could not be executed"
+    Fail "tray-quit-command" "tray icon geometry was unavailable; native mouse click could not be executed"
+    Fail "tray-quit" "tray icon geometry was unavailable; native mouse click could not be executed"
+    Fail "tray-process-lifetime" "tray icon geometry was unavailable; native mouse click could not be executed"
+  }
 
 Get-SaeedProcess | Stop-Process -Force -ErrorAction SilentlyContinue
 Wait-Until { if((Get-SaeedProcess).Count -eq 0){$true}else{$null}} 10000 | Out-Null
