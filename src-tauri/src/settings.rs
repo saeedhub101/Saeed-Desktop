@@ -17,6 +17,7 @@ pub struct CharacterSettings {
     pub scale: CharacterScale,
     pub always_on_top: bool,
     pub current_id: String,
+    pub click_through: bool,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
@@ -42,6 +43,7 @@ impl Default for AppSettings {
                 scale: CharacterScale::Medium,
                 always_on_top: true,
                 current_id: "default".into(),
+                click_through: true,
             },
             performance: PerformanceSettings { low_power: false },
         }
